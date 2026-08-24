@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite
+*.sqlite3
+*.log
+agent-credential.json
+*-credential.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.token
+*-token.json
+agent.json
+runtime/
