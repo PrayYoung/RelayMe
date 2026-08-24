@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "status": "public_release_hygiene_complete",
+  "status": "synthetic_blind_diagnosis_ready",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -16,8 +16,12 @@
     "Added bounded Agent reconnection after temporary Controller failures",
     "Validated automatic Agent recovery after a real Controller restart",
     "Replaced tracked deployment identifiers with generic examples",
-    "Rewrote Git history for public release hygiene"
+    "Rewrote Git history for public release hygiene",
+    "Created an isolated synthetic config/path-mismatch incident",
+    "Registered only the synthetic demo resources with the Host Agent",
+    "Validated all six R0 capabilities for blind diagnosis",
+    "Stored ground truth and validation responses outside Git and the allowed root"
   ],
-  "current_work": "v0.1 public-release hygiene audit complete",
-  "next_action": "Publish the sanitized repository from its new public-release history"
+  "current_work": "v0.1 synthetic blind-diagnosis incident ready",
+  "next_action": "Give the broken synthetic incident to a reasoning client with only RelayMe access"
 }

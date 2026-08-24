@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.1 public-release hygiene audit complete.
+v0.1 synthetic blind-diagnosis incident ready.
 
 ## Completed
 
@@ -14,11 +14,14 @@ v0.1 public-release hygiene audit complete.
 - Added bounded exponential-backoff recovery for temporary Controller/network failures without re-enrollment.
 - Validated automatic Agent recovery after a Controller restart, followed by a successful `git_diff` task.
 - Replaced tracked deployment identifiers with generic examples and rewrote Git history for public release.
+- Created one isolated synthetic config/path-mismatch incident with a dedicated demo repository and service outside production namespaces.
+- Registered only the demo allowed root, repository, and service with the Host Agent; validated all six R0 capabilities through RelayMe.
+- Stored the incident ground truth and validation responses privately outside Git and outside the benchmark-visible allowed root.
 
 ## Current work
 
-- v0.1 is ready for public release. Deployment runtime secrets and host configuration remain outside Git.
+- v0.1 is ready for public release and one blind synthetic-incident diagnosis. Deployment runtime secrets, host configuration, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Publish the sanitized repository from its new public-release history.
+- Give the broken synthetic incident to a reasoning client with only RelayMe access.
