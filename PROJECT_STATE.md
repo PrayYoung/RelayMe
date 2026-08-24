@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.1 synthetic blind-diagnosis incident ready.
+v0.1 external client interface implemented; deployment ingress validation blocked.
 
 ## Completed
 
@@ -17,11 +17,13 @@ v0.1 synthetic blind-diagnosis incident ready.
 - Created one isolated synthetic config/path-mismatch incident with a dedicated demo repository and service outside production namespaces.
 - Registered only the demo allowed root, repository, and service with the Host Agent; validated all six R0 capabilities through RelayMe.
 - Stored the incident ground truth and validation responses privately outside Git and outside the benchmark-visible allowed root.
+- Added environment-configured external CLI commands for the existing six R0 capabilities, including optional HTTPS CA-certificate validation.
+- Updated the Agent to support an optional Controller CA certificate while retaining its existing credential and outbound long-poll architecture.
 
 ## Current work
 
-- v0.1 is ready for public release and one blind synthetic-incident diagnosis. Deployment runtime secrets, host configuration, and fixture ground truth remain outside Git.
+- The external client interface is ready, but direct external Controller access is blocked by deployment ingress policy. Runtime secrets, host configuration, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Give the broken synthetic incident to a reasoning client with only RelayMe access.
+- Add a narrowly scoped inbound network rule for the Controller's dedicated TLS port, then rerun external validation and the blind diagnosis.

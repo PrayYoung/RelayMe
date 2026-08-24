@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "status": "synthetic_blind_diagnosis_ready",
+  "status": "external_client_ingress_blocked",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -20,8 +20,10 @@
     "Created an isolated synthetic config/path-mismatch incident",
     "Registered only the synthetic demo resources with the Host Agent",
     "Validated all six R0 capabilities for blind diagnosis",
-    "Stored ground truth and validation responses outside Git and the allowed root"
+    "Stored ground truth and validation responses outside Git and the allowed root",
+    "Added environment-configured external R0 CLI commands with optional HTTPS CA validation",
+    "Added optional Controller CA support to the Agent without re-enrollment"
   ],
-  "current_work": "v0.1 synthetic blind-diagnosis incident ready",
-  "next_action": "Give the broken synthetic incident to a reasoning client with only RelayMe access"
+  "current_work": "External client interface implemented; direct ingress validation is blocked by deployment network policy",
+  "next_action": "Add a narrowly scoped inbound network rule for the Controller TLS port, then rerun external validation and blind diagnosis"
 }

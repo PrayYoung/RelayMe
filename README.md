@@ -27,6 +27,25 @@ python -m relayme --url http://127.0.0.1:8765 --token CLIENT_TOKEN list-hosts
 python -m relayme --url http://127.0.0.1:8765 --token CLIENT_TOKEN task HOST_ID host_status '{}'
 ```
 
+## External R0 client
+
+The same CLI is the external client. Keep connection details local to the client machine:
+
+```sh
+export RELAYME_URL=https://controller.example.invalid:8765
+export RELAYME_TOKEN=CHANGE_ME_SCOPED_R0_TOKEN
+export RELAYME_CA_CERT=/secure/local/path/controller-ca.pem
+
+relayme hosts
+relayme status HOST_ID
+relayme processes HOST_ID
+relayme logs HOST_ID example.service --last-n 100 --max-bytes 65536
+relayme read-file HOST_ID /srv/example-app/config.json
+relayme git-diff HOST_ID example-app
+```
+
+`RELAYME_CA_CERT` is optional when the Controller certificate chains to the client machine's normal trust store. The CLI never falls back to SSH or shell execution.
+
 `agent.json` uses an explicit local policy:
 
 ```json

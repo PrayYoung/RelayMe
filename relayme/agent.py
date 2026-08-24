@@ -6,6 +6,7 @@ import http.client
 import json
 import os
 import platform
+import ssl
 import stat
 import subprocess
 import time
@@ -124,11 +125,12 @@ class AgentPolicy:
         raise PolicyError("unsupported capability")
 
 
-def request(url: str, method: str, body: dict[str, Any] | None = None, headers: dict[str, str] | None = None) -> dict[str, Any]:
+def request(url: str, method: str, body: dict[str, Any] | None = None, headers: dict[str, str] | None = None, ca_cert: str | None = None) -> dict[str, Any]:
     data = json.dumps(body).encode() if body is not None else None
     req = Request(url, data=data, method=method, headers={"Content-Type": "application/json", **(headers or {})})
     try:
-        with urlopen(req, timeout=35) as response: return json.loads(response.read())
+        context = ssl.create_default_context(cafile=ca_cert) if ca_cert else None
+        with urlopen(req, timeout=35, context=context) as response: return json.loads(response.read())
     except HTTPError as exc:
         if exc.code >= 500: raise ControllerUnavailable(f"controller returned {exc.code}")
         raise RuntimeError(f"controller returned {exc.code}: {exc.read().decode()}")
@@ -139,13 +141,14 @@ def request(url: str, method: str, body: dict[str, Any] | None = None, headers: 
 def credentials(config: dict[str, Any]) -> dict[str, str]:
     path = Path(config.get("agent_credential_file", "agent-credential.json"))
     if path.exists(): return json.loads(path.read_text())
-    enrolled = request(config["controller_url"] + "/v1/agents/enroll", "POST", {"enrollment_token": config["enrollment_token"], "hostname": config.get("hostname", platform.node()), "metadata": {"agent_version": __version__}})
+    enrolled = request(config["controller_url"] + "/v1/agents/enroll", "POST", {"enrollment_token": config["enrollment_token"], "hostname": config.get("hostname", platform.node()), "metadata": {"agent_version": __version__}}, ca_cert=config.get("controller_ca_cert"))
     path.write_text(json.dumps(enrolled)); os.chmod(path, 0o600)
     return enrolled
 
 
 def run(config: dict[str, Any]) -> None:
     policy, cred, url = AgentPolicy(config), credentials(config), config["controller_url"].rstrip("/")
+    ca_cert = config.get("controller_ca_cert")
     headers = {"Authorization": "Bearer " + cred["credential"], "X-RelayMe-Host": cred["host_id"]}
     last_heartbeat = 0.0
     retry_seconds = INITIAL_RETRY_SECONDS
@@ -153,11 +156,11 @@ def run(config: dict[str, Any]) -> None:
     while True:
         try:
             if pending_result:
-                request(url + "/v1/agent/tasks/result", "POST", pending_result, headers)
+                request(url + "/v1/agent/tasks/result", "POST", pending_result, headers, ca_cert)
                 pending_result = None
             if time.monotonic() - last_heartbeat >= 30:
-                request(url + "/v1/agent/heartbeat", "POST", {"metadata": {"agent_version": __version__}}, headers); last_heartbeat = time.monotonic()
-            payload = request(url + "/v1/agent/tasks/next?wait_seconds=20", "GET", headers=headers)
+                request(url + "/v1/agent/heartbeat", "POST", {"metadata": {"agent_version": __version__}}, headers, ca_cert); last_heartbeat = time.monotonic()
+            payload = request(url + "/v1/agent/tasks/next?wait_seconds=20", "GET", headers=headers, ca_cert=ca_cert)
             retry_seconds = INITIAL_RETRY_SECONDS
         except ControllerUnavailable:
             time.sleep(retry_seconds)

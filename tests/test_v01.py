@@ -3,12 +3,14 @@ import os
 import tempfile
 import threading
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from relayme.agent import AgentPolicy, ControllerUnavailable, PolicyError, run
+from relayme import cli
 from relayme.controller import ControllerServer, Store
 
 
@@ -103,6 +105,19 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as client: self.call("GET", "/v1/hosts", token=expired)
         self.assertEqual(client.exception.code, 401)
         client.exception.close()
+
+
+class ExternalCliTests(unittest.TestCase):
+    def test_named_r0_command_uses_environment_configuration(self):
+        created = {"task_id": "task"}; completed = {"task": {"status": "SUCCEEDED", "result": {"ok": True}}}
+        with patch.dict("os.environ", {"RELAYME_URL": "https://controller.example.invalid", "RELAYME_TOKEN": "scoped"}, clear=True), \
+             patch("sys.argv", ["relayme", "read-file", "host", "/srv/example-app/config.json"]), \
+             patch("relayme.cli.call", side_effect=[created, completed]) as call, \
+             patch("sys.stdout", new_callable=StringIO):
+            cli.main()
+        self.assertEqual(call.call_args_list[0].args[2:4], ("POST", "/v1/tasks"))
+        self.assertEqual(call.call_args_list[0].args[4]["capability"], "read_file")
+        self.assertEqual(call.call_args_list[0].args[4]["arguments"], {"path": "/srv/example-app/config.json"})
 
 
 if __name__ == "__main__": unittest.main()
