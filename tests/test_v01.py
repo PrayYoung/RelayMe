@@ -105,6 +105,12 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as client: self.call("GET", "/v1/hosts", token=expired)
         self.assertEqual(client.exception.code, 401)
         client.exception.close()
+    def test_scoped_client_cannot_create_out_of_scope_task(self):
+        token = self.store.create_client("limited", {"hosts": ["example-host"], "capabilities": ["host_status"]}, None)
+        with self.assertRaises(HTTPError) as client:
+            self.call("POST", "/v1/tasks", {"host": "example-host", "capability": "process_list", "arguments": {}}, token)
+        self.assertEqual(client.exception.code, 403)
+        client.exception.close()
 
 
 class ExternalCliTests(unittest.TestCase):
