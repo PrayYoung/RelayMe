@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed and the demo is reset healthy.
+v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed and the demo is reset healthy. The optional generic MCP adapter is validated.
 
 ## Completed
 
@@ -28,11 +28,13 @@ v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed an
 - Reset only the isolated synthetic demo using its documented procedure; its one-shot unit completed successfully with the healthy configuration restored.
 - Pruned stale unreachable Git objects left by earlier history rewriting and confirmed the remaining object database is clean of private deployment patterns.
 - Added public-safe release hygiene: Apache-2.0 licensing, packaging metadata, a generic Agent configuration example, corrected CLI documentation, and broader local-artifact exclusions.
+- Added a separate generic MCP stdio adapter that translates exactly the six read-only R0 tools to the existing Controller HTTP/JSON API.
+- Validated the MCP adapter's mappings, error preservation, configuration checks, package entry point, and a local MCP-client-to-Controller `list_hosts` round trip without SSH or a managed host.
 
 ## Current work
 
-- v0.1 external access, synthetic acceptance, and public-release cleanup are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
+- v0.1 external access, synthetic acceptance, public-release cleanup, and the generic read-only MCP adapter are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Create the v0.1.0 release tag after final review and explicit authorization.
+- Configure a chosen MCP-capable client to launch `relayme-mcp` with a local scoped R0 token.

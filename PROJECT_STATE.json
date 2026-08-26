@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "status": "release_cleanup_complete",
+  "status": "mcp_adapter_validated",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -33,8 +33,10 @@
     "Confirmed the configuration regression, missing input, and expected evidence chain",
     "Reset only the isolated synthetic demo to its healthy one-shot completion state",
     "Pruned stale unreachable Git objects and confirmed the remaining object database is clean of private deployment patterns",
-    "Added Apache-2.0 licensing, minimal packaging metadata, generic Agent example, corrected CLI documentation, and broader local-artifact exclusions"
+    "Added Apache-2.0 licensing, minimal packaging metadata, generic Agent example, corrected CLI documentation, and broader local-artifact exclusions",
+    "Added a separate generic MCP stdio adapter for exactly the six read-only R0 capabilities",
+    "Validated MCP tool schemas and Controller request mapping, authorization and policy error surfacing, configuration failures, package entry point, and a local MCP-client-to-Controller list_hosts round trip without SSH"
   ],
-  "current_work": "v0.1 external access, synthetic acceptance, and public-release cleanup are validated; deployment details and private ground truth remain outside Git",
-  "next_action": "Create the v0.1.0 release tag after final review and explicit authorization"
+  "current_work": "v0.1 external access, synthetic acceptance, public-release cleanup, and the generic read-only MCP adapter are validated; deployment details and private ground truth remain outside Git",
+  "next_action": "Configure a chosen MCP-capable client to launch relayme-mcp with a local scoped R0 token"
 }

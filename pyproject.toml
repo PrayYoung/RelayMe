@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Minimal read-only remote compute and ops bridge"
 readme = "README.md"
 requires-python = ">=3.11"
+dependencies = ["mcp>=1.27,<2"]
 license = {text = "Apache-2.0"}
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -20,6 +21,10 @@ classifiers = [
 relayme-controller = "relayme.controller:main"
 relayme-agent = "relayme.agent:main"
 relayme = "relayme.cli:main"
+relayme-mcp = "adapters.mcp.server:main"
+
+[tool.setuptools.packages.find]
+include = ["relayme*", "adapters*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
