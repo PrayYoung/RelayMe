@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.1 external client interface implemented; private-network external validation complete.
+v0.1 external client interface implemented; blind synthetic-incident diagnosis complete over private networking.
 
 ## Completed
 
@@ -22,11 +22,13 @@ v0.1 external client interface implemented; private-network external validation 
 - Bound the deployment Controller TLS listener only to its private Tailnet interface; it is not listening on a public interface.
 - Validated all six R0 CLI capabilities from an external client directly through the private network, with no SSH used for those capability calls.
 - Verified an external out-of-scope file request remains rejected by the Host Agent.
+- Completed a blind diagnosis of the isolated synthetic incident using six external R0 capability calls only; the evidence identifies a configuration regression that references a missing input file.
+- Confirmed the blind diagnosis used no SSH or other non-RelayMe remote access path, and did not inspect private ground truth.
 
 ## Current work
 
-- Private-network external access is validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
+- Private-network external access and blind diagnosis are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Run the existing blind synthetic-incident diagnosis using only the external RelayMe CLI over the private network.
+- Perform a separate evaluation that compares the recorded blind diagnosis with the private ground truth.

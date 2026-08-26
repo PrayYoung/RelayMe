@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "status": "external_client_tailnet_validated",
+  "status": "blind_synthetic_diagnosis_complete",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -25,8 +25,11 @@
     "Added optional Controller CA support to the Agent without re-enrollment",
     "Bound the deployment Controller TLS listener only to a private Tailnet interface",
     "Validated all six R0 CLI capabilities externally over private networking without SSH",
-    "Verified external out-of-scope read_file rejection"
+    "Verified external out-of-scope read_file rejection",
+    "Completed blind synthetic-incident diagnosis with six external R0 capability calls only",
+    "Identified a configuration regression referencing a missing input file",
+    "Confirmed no SSH or non-RelayMe remote access was used for blind diagnosis"
   ],
-  "current_work": "Private-network external CLI access is validated; deployment details and private ground truth remain outside Git",
-  "next_action": "Run the existing blind synthetic-incident diagnosis using only the external RelayMe CLI over private networking"
+  "current_work": "Private-network external CLI access and blind synthetic diagnosis are validated; deployment details and private ground truth remain outside Git",
+  "next_action": "Perform a separate evaluation comparing the blind diagnosis with the private ground truth"
 }
