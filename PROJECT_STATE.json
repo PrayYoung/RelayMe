@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "status": "external_client_ingress_blocked",
+  "status": "external_client_tailnet_validated",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -22,8 +22,11 @@
     "Validated all six R0 capabilities for blind diagnosis",
     "Stored ground truth and validation responses outside Git and the allowed root",
     "Added environment-configured external R0 CLI commands with optional HTTPS CA validation",
-    "Added optional Controller CA support to the Agent without re-enrollment"
+    "Added optional Controller CA support to the Agent without re-enrollment",
+    "Bound the deployment Controller TLS listener only to a private Tailnet interface",
+    "Validated all six R0 CLI capabilities externally over private networking without SSH",
+    "Verified external out-of-scope read_file rejection"
   ],
-  "current_work": "External client interface implemented; direct ingress validation is blocked by deployment network policy",
-  "next_action": "Add a narrowly scoped inbound network rule for the Controller TLS port, then rerun external validation and blind diagnosis"
+  "current_work": "Private-network external CLI access is validated; deployment details and private ground truth remain outside Git",
+  "next_action": "Run the existing blind synthetic-incident diagnosis using only the external RelayMe CLI over private networking"
 }

@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.1 external client interface implemented; deployment ingress validation blocked.
+v0.1 external client interface implemented; private-network external validation complete.
 
 ## Completed
 
@@ -19,11 +19,14 @@ v0.1 external client interface implemented; deployment ingress validation blocke
 - Stored the incident ground truth and validation responses privately outside Git and outside the benchmark-visible allowed root.
 - Added environment-configured external CLI commands for the existing six R0 capabilities, including optional HTTPS CA-certificate validation.
 - Updated the Agent to support an optional Controller CA certificate while retaining its existing credential and outbound long-poll architecture.
+- Bound the deployment Controller TLS listener only to its private Tailnet interface; it is not listening on a public interface.
+- Validated all six R0 CLI capabilities from an external client directly through the private network, with no SSH used for those capability calls.
+- Verified an external out-of-scope file request remains rejected by the Host Agent.
 
 ## Current work
 
-- The external client interface is ready, but direct external Controller access is blocked by deployment ingress policy. Runtime secrets, host configuration, and fixture ground truth remain outside Git.
+- Private-network external access is validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Add a narrowly scoped inbound network rule for the Controller's dedicated TLS port, then rerun external validation and the blind diagnosis.
+- Run the existing blind synthetic-incident diagnosis using only the external RelayMe CLI over the private network.
