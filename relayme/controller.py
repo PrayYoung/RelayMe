@@ -41,6 +41,8 @@ class Store:
             PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS enrollment_tokens (hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS client_tokens (hash TEXT PRIMARY KEY, identity TEXT NOT NULL, scopes TEXT NOT NULL, expires_at INTEGER);
+            CREATE TABLE IF NOT EXISTS client_token_audit (event_id INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT NOT NULL,
+              identity TEXT NOT NULL, token_hash TEXT, scopes TEXT, created_at INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS agents (host_id TEXT PRIMARY KEY, hostname TEXT NOT NULL, credential_hash TEXT NOT NULL,
               registered_at INTEGER NOT NULL, last_heartbeat INTEGER, status TEXT NOT NULL, metadata TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS tasks (task_id TEXT PRIMARY KEY, actor TEXT NOT NULL, host_id TEXT NOT NULL, capability TEXT NOT NULL,
@@ -57,12 +59,35 @@ class Store:
         return token
 
     def create_client(self, identity: str, scopes: dict[str, Any], ttl: int | None) -> str:
+        if not isinstance(identity, str) or not identity:
+            raise ValueError("client identity is required")
+        capabilities = scopes.get("capabilities", [])
+        hosts = scopes.get("hosts", [])
+        if not isinstance(capabilities, list) or not capabilities or not set(capabilities).issubset(CAPABILITIES):
+            raise ValueError("invalid client capabilities")
+        if not isinstance(hosts, list) or not all(isinstance(host, str) and host for host in hosts):
+            raise ValueError("invalid client host scope")
         token = secrets.token_urlsafe(32)
+        hashed = token_hash(token)
         with self.lock:
             self.db.execute("INSERT INTO client_tokens VALUES (?, ?, ?, ?)",
-                            (token_hash(token), identity, json.dumps(scopes), now() + ttl if ttl else None))
+                            (hashed, identity, json.dumps(scopes), now() + ttl if ttl else None))
+            self.db.execute("INSERT INTO client_token_audit (event,identity,token_hash,scopes,created_at) VALUES (?,?,?,?,?)",
+                            ("CREATED", identity, hashed, json.dumps(scopes), now()))
             self.db.commit()
         return token
+
+    def revoke_clients(self, identity: str) -> int:
+        if not isinstance(identity, str) or not identity:
+            raise ValueError("client identity is required")
+        with self.lock:
+            rows = self.db.execute("SELECT hash, scopes FROM client_tokens WHERE identity=?", (identity,)).fetchall()
+            for row in rows:
+                self.db.execute("INSERT INTO client_token_audit (event,identity,token_hash,scopes,created_at) VALUES (?,?,?,?,?)",
+                                ("REVOKED", identity, row["hash"], row["scopes"], now()))
+            self.db.execute("DELETE FROM client_tokens WHERE identity=?", (identity,))
+            self.db.commit()
+        return len(rows)
 
     def authenticate_client(self, token: str) -> tuple[str, dict[str, Any]] | None:
         with self.lock:
@@ -197,12 +222,6 @@ class Api(BaseHTTPRequestHandler):
                 _, scope = self.client()
                 if not scope.get("admin"): self.fail(403, "admin token required")
                 self.reply(201, {"token": self.server.store.create_enrollment(int(body.get("ttl_seconds", 600))) }); return
-            if path == "/v1/admin/client-tokens":
-                _, scope = self.client()
-                if not scope.get("admin"): self.fail(403, "admin token required")
-                scopes = body.get("scopes", {})
-                if not isinstance(body.get("identity"), str) or not set(scopes.get("capabilities", [])).issubset(CAPABILITIES): self.fail(400, "invalid client token request")
-                self.reply(201, {"token": self.server.store.create_client(body["identity"], scopes, body.get("ttl_seconds"))}); return
             if path == "/v1/agents/enroll":
                 enrolled = self.server.store.enroll(str(body.get("enrollment_token", "")), str(body.get("hostname", "")), body.get("metadata", {}))
                 if not enrolled: self.fail(401, "invalid or expired enrollment token")

@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import ssl
+import sys
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -30,6 +31,10 @@ def wait_for_task(url: str, token: str, task_id: str, ca_cert: str | None, wait_
 
 
 def main() -> None:
+    if sys.argv[1:2] == ["admin"]:
+        from .admin import main as admin_main
+        admin_main(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default=os.environ.get("RELAYME_URL"), help="Controller URL (or RELAYME_URL)")
     parser.add_argument("--token", default=os.environ.get("RELAYME_TOKEN"), help="Scoped client token (or RELAYME_TOKEN)")
@@ -37,7 +42,6 @@ def main() -> None:
     parser.add_argument("--wait-seconds", type=int, default=35, help="Maximum time to poll an R0 task")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("list-hosts"); commands.add_parser("hosts")
-    create = commands.add_parser("create-client-token"); create.add_argument("--identity", required=True); create.add_argument("--capability", action="append", required=True); create.add_argument("--host", action="append", default=["*"]); create.add_argument("--ttl-seconds", type=int)
     enroll = commands.add_parser("create-enrollment-token"); enroll.add_argument("--ttl-seconds", type=int, default=600)
     task = commands.add_parser("task"); task.add_argument("host"); task.add_argument("capability"); task.add_argument("arguments", help="JSON object")
     get = commands.add_parser("get-task"); get.add_argument("task_id")
@@ -49,7 +53,6 @@ def main() -> None:
     args = parser.parse_args()
     if not args.url or not args.token: parser.error("--url/RELAYME_URL and --token/RELAYME_TOKEN are required")
     if args.command in {"list-hosts", "hosts"}: value = call(args.url, args.token, "GET", "/v1/hosts", ca_cert=args.ca_cert)
-    elif args.command == "create-client-token": value = call(args.url, args.token, "POST", "/v1/admin/client-tokens", {"identity": args.identity, "scopes": {"capabilities": args.capability, "hosts": args.host}, "ttl_seconds": args.ttl_seconds}, args.ca_cert)
     elif args.command == "create-enrollment-token": value = call(args.url, args.token, "POST", "/v1/admin/enrollment-tokens", {"ttl_seconds": args.ttl_seconds}, args.ca_cert)
     elif args.command == "task": value = call(args.url, args.token, "POST", "/v1/tasks", {"host": args.host, "capability": args.capability, "arguments": json.loads(args.arguments)}, args.ca_cert)
     elif args.command == "get-task": value = call(args.url, args.token, "GET", "/v1/tasks/" + args.task_id, ca_cert=args.ca_cert)

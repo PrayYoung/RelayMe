@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "status": "mcp_adapter_validated",
+  "status": "local_client_provisioning_validated",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -35,8 +35,10 @@
     "Pruned stale unreachable Git objects and confirmed the remaining object database is clean of private deployment patterns",
     "Added Apache-2.0 licensing, minimal packaging metadata, generic Agent example, corrected CLI documentation, and broader local-artifact exclusions",
     "Added a separate generic MCP stdio adapter for exactly the six read-only R0 capabilities",
-    "Validated MCP tool schemas and Controller request mapping, authorization and policy error surfacing, configuration failures, package entry point, and a local MCP-client-to-Controller list_hosts round trip without SSH"
+    "Validated MCP tool schemas and Controller request mapping, authorization and policy error surfacing, configuration failures, package entry point, and a local MCP-client-to-Controller list_hosts round trip without SSH",
+    "Added local-only scoped client-token creation and revocation with hashed-token audit metadata and no remote client-token creation endpoint",
+    "Created and externally authenticated a dedicated opencode client scoped to exactly the six read-only R0 capabilities; its local configuration and public Controller CA remain outside Git"
   ],
-  "current_work": "v0.1 external access, synthetic acceptance, public-release cleanup, and the generic read-only MCP adapter are validated; deployment details and private ground truth remain outside Git",
-  "next_action": "Configure a chosen MCP-capable client to launch relayme-mcp with a local scoped R0 token"
+  "current_work": "v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, and local-only client provisioning are validated; deployment details and private ground truth remain outside Git",
+  "next_action": "Configure OpenCode to launch relayme-mcp with its local scoped R0 token, then run the MCP smoke test"
 }

@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed and the demo is reset healthy. The optional generic MCP adapter is validated.
+v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed and the demo is reset healthy. The optional generic MCP adapter and local-only client provisioning workflow are validated.
 
 ## Completed
 
@@ -30,11 +30,13 @@ v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed an
 - Added public-safe release hygiene: Apache-2.0 licensing, packaging metadata, a generic Agent configuration example, corrected CLI documentation, and broader local-artifact exclusions.
 - Added a separate generic MCP stdio adapter that translates exactly the six read-only R0 tools to the existing Controller HTTP/JSON API.
 - Validated the MCP adapter's mappings, error preservation, configuration checks, package entry point, and a local MCP-client-to-Controller `list_hosts` round trip without SSH or a managed host.
+- Added a local-only Controller administration path for scoped client-token creation and revocation, with hashed-token audit metadata and no remote client-token creation endpoint.
+- Created and externally authenticated a dedicated `opencode` client scoped to exactly the six read-only R0 capabilities; its local configuration and public Controller CA remain outside Git.
 
 ## Current work
 
-- v0.1 external access, synthetic acceptance, public-release cleanup, and the generic read-only MCP adapter are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
+- v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, and local-only client provisioning are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Configure a chosen MCP-capable client to launch `relayme-mcp` with a local scoped R0 token.
+- Configure OpenCode to launch `relayme-mcp` with its local scoped R0 token, then run the MCP smoke test.

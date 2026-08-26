@@ -13,14 +13,16 @@ python -m relayme.controller --db relayme.db --bootstrap-token CHANGE_ME_ADMIN_T
 python -m relayme.agent --config agent.json
 ```
 
-Install the project (`python -m pip install .`) to use the `relayme` CLI. The bootstrap token authenticates administrative enrollment and client-token creation. Create a scoped client token:
+Install the project (`python -m pip install .`) to use the `relayme` CLI. The bootstrap token authenticates administrative enrollment. Create or revoke scoped client tokens only on the Controller host by opening its protected local database; this does not call the Controller HTTP API:
 
 ```sh
-relayme --url http://127.0.0.1:8765 --token CHANGE_ME_ADMIN_TOKEN create-client-token \
-  --identity local-cli --capability host_status --capability process_list
+relayme admin --db /protected/path/relayme.db create-client \
+  --name local-cli --capability list_hosts --capability host_status \
+  --output-file /protected/path/new-client-token
+relayme admin --db /protected/path/relayme.db revoke-client --name local-cli
 ```
 
-Use the emitted token to create tasks or list hosts:
+The create command emits the new token once unless `--output-file` is used. Only its hash and audit metadata are retained in the Controller database. Use the resulting scoped token to create tasks or list hosts:
 
 ```sh
 relayme --url http://127.0.0.1:8765 --token CLIENT_TOKEN list-hosts

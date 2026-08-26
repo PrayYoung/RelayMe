@@ -10,7 +10,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from relayme.agent import AgentPolicy, ControllerUnavailable, PolicyError, run
-from relayme import cli
+from relayme import admin, cli
 from relayme.controller import ControllerServer, Store
 
 
@@ -85,7 +85,7 @@ class ControllerTests(unittest.TestCase):
         agent = self.call("POST", "/v1/agents/enroll", {"enrollment_token": enrollment, "hostname": "example-host", "metadata": {}})
         headers = {"Authorization": "Bearer " + agent["credential"], "X-RelayMe-Host": agent["host_id"]}
         self.call("POST", "/v1/agent/heartbeat", {"metadata": {}}, agent=agent["host_id"], token=agent["credential"])
-        token = self.call("POST", "/v1/admin/client-tokens", {"identity": "local-cli", "scopes": {"hosts": [agent["host_id"]], "capabilities": ["host_status"]}})["token"]
+        token = self.store.create_client("local-cli", {"hosts": [agent["host_id"]], "capabilities": ["host_status"]}, None)
         task = self.call("POST", "/v1/tasks", {"host": agent["host_id"], "capability": "host_status", "arguments": {}}, token)["task_id"]
         delivered = self.call("GET", "/v1/agent/tasks/next?wait_seconds=0", token=agent["credential"], agent=agent["host_id"])["task"]
         self.assertEqual(delivered["task_id"], task)
@@ -111,6 +111,63 @@ class ControllerTests(unittest.TestCase):
             self.call("POST", "/v1/tasks", {"host": "example-host", "capability": "process_list", "arguments": {}}, token)
         self.assertEqual(client.exception.code, 403)
         client.exception.close()
+
+    def test_remote_client_token_creation_is_not_exposed(self):
+        with self.assertRaises(HTTPError) as client:
+            self.call("POST", "/v1/admin/client-tokens", {"identity": "remote", "scopes": {"hosts": ["*"], "capabilities": ["list_hosts"]}})
+        self.assertEqual(client.exception.code, 404)
+        client.exception.close()
+
+
+class LocalAdminTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.database = str(Path(self.temp.name) / "controller.sqlite")
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_local_admin_creates_exact_scoped_client_and_audit(self):
+        capabilities = ["list_hosts", "host_status", "process_list", "read_logs", "read_file", "git_diff"]
+        arguments = [value for capability in capabilities for value in ("--capability", capability)]
+        with patch("sys.stdout", new_callable=StringIO) as output:
+            admin.main(["--db", self.database, "create-client", "--name", "opencode", *arguments])
+        token = output.getvalue().strip()
+        store = Store(self.database)
+        try:
+            identity, scope = store.authenticate_client(token)
+            self.assertEqual(identity, "opencode")
+            self.assertEqual(scope, {"hosts": ["*"], "capabilities": capabilities})
+            audit = store.db.execute("SELECT event, identity, token_hash FROM client_token_audit").fetchone()
+            self.assertEqual((audit["event"], audit["identity"]), ("CREATED", "opencode"))
+            self.assertNotEqual(audit["token_hash"], token)
+        finally:
+            store.db.close()
+
+    def test_local_admin_rejects_unauthorized_capability(self):
+        with self.assertRaises(SystemExit):
+            admin.main(["--db", self.database, "create-client", "--name", "opencode", "--capability", "run_shell"])
+
+    def test_relayme_admin_dispatches_to_local_admin(self):
+        with patch("sys.argv", ["relayme", "admin", "--db", self.database, "create-client", "--name", "local", "--capability", "list_hosts"]), \
+             patch("sys.stdout", new_callable=StringIO) as output:
+            cli.main()
+        self.assertGreaterEqual(len(output.getvalue().strip()), 24)
+
+    def test_local_admin_revokes_client_and_records_audit(self):
+        store = Store(self.database)
+        token = store.create_client("opencode", {"hosts": ["*"], "capabilities": ["list_hosts"]}, None)
+        store.db.close()
+        with patch("sys.stdout", new_callable=StringIO) as output:
+            admin.main(["--db", self.database, "revoke-client", "--name", "opencode"])
+        self.assertEqual(output.getvalue().strip(), "1")
+        store = Store(self.database)
+        try:
+            self.assertIsNone(store.authenticate_client(token))
+            events = [row["event"] for row in store.db.execute("SELECT event FROM client_token_audit ORDER BY event_id")]
+            self.assertEqual(events, ["CREATED", "REVOKED"])
+        finally:
+            store.db.close()
 
 
 class ExternalCliTests(unittest.TestCase):
