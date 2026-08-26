@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "status": "local_client_provisioning_validated",
+  "status": "controller_restart_validated",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -37,8 +37,9 @@
     "Added a separate generic MCP stdio adapter for exactly the six read-only R0 capabilities",
     "Validated MCP tool schemas and Controller request mapping, authorization and policy error surfacing, configuration failures, package entry point, and a local MCP-client-to-Controller list_hosts round trip without SSH",
     "Added local-only scoped client-token creation and revocation with hashed-token audit metadata and no remote client-token creation endpoint",
-    "Created and externally authenticated a dedicated opencode client scoped to exactly the six read-only R0 capabilities; its local configuration and public Controller CA remain outside Git"
+    "Created and externally authenticated a dedicated opencode client scoped to exactly the six read-only R0 capabilities; its local configuration and public Controller CA remain outside Git",
+    "Restarted the deployment Controller through its protected local workflow; verified scoped authentication, a 404 response for the legacy remote client-token route, and private-interface-only listener binding"
   ],
-  "current_work": "v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, and local-only client provisioning are validated; deployment details and private ground truth remain outside Git",
+  "current_work": "v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, and hardened Controller deployment are validated; deployment details and private ground truth remain outside Git",
   "next_action": "Configure OpenCode to launch relayme-mcp with its local scoped R0 token, then run the MCP smoke test"
 }

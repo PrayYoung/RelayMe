@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed and the demo is reset healthy. The optional generic MCP adapter and local-only client provisioning workflow are validated.
+v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed and the demo is reset healthy. The optional generic MCP adapter, local-only client provisioning workflow, and Controller restart validation are complete.
 
 ## Completed
 
@@ -32,10 +32,11 @@ v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed an
 - Validated the MCP adapter's mappings, error preservation, configuration checks, package entry point, and a local MCP-client-to-Controller `list_hosts` round trip without SSH or a managed host.
 - Added a local-only Controller administration path for scoped client-token creation and revocation, with hashed-token audit metadata and no remote client-token creation endpoint.
 - Created and externally authenticated a dedicated `opencode` client scoped to exactly the six read-only R0 capabilities; its local configuration and public Controller CA remain outside Git.
+- Restarted the deployment Controller through its protected local workflow; verified the scoped client still authenticates, the legacy remote client-token route returns `404`, and the listener remains private-interface-only.
 
 ## Current work
 
-- v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, and local-only client provisioning are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
+- v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, and the hardened Controller deployment are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
 
 ## Next action
 
