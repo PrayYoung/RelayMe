@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "status": "synthetic_acceptance_passed_demo_reset",
+  "status": "release_cleanup_complete",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -31,8 +31,10 @@
     "Confirmed no SSH or non-RelayMe remote access was used for blind diagnosis",
     "Accepted blind diagnosis against private ground truth: PASS",
     "Confirmed the configuration regression, missing input, and expected evidence chain",
-    "Reset only the isolated synthetic demo to its healthy one-shot completion state"
+    "Reset only the isolated synthetic demo to its healthy one-shot completion state",
+    "Pruned stale unreachable Git objects and confirmed the remaining object database is clean of private deployment patterns",
+    "Added Apache-2.0 licensing, minimal packaging metadata, generic Agent example, corrected CLI documentation, and broader local-artifact exclusions"
   ],
-  "current_work": "v0.1 private-network external CLI access and synthetic acceptance are validated; deployment details and private ground truth remain outside Git",
-  "next_action": "Keep the isolated demo healthy unless a new blind-diagnosis run is explicitly requested"
+  "current_work": "v0.1 external access, synthetic acceptance, and public-release cleanup are validated; deployment details and private ground truth remain outside Git",
+  "next_action": "Create the v0.1.0 release tag after final review and explicit authorization"
 }

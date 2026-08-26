@@ -1,0 +1,14 @@
+{
+  "controller_url": "http://127.0.0.1:8765",
+  "enrollment_token": "ENROLLMENT_TOKEN",
+  "agent_credential_file": "agent-credential.json",
+  "hostname": "example-host",
+  "allowed_roots": ["/srv/example-app"],
+  "repos": {
+    "example-app": {
+      "path": "/srv/example-app"
+    }
+  },
+  "services": ["example.service"],
+  "filesystems": ["/"]
+}

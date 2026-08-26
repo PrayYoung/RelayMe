@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.1 external client interface implemented; synthetic end-to-end acceptance test passed and the demo is reset healthy.
+v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed and the demo is reset healthy.
 
 ## Completed
 
@@ -26,11 +26,13 @@ v0.1 external client interface implemented; synthetic end-to-end acceptance test
 - Confirmed the blind diagnosis used no SSH or other non-RelayMe remote access path, and did not inspect private ground truth.
 - Evaluated the blind diagnosis against private ground truth: PASS. It correctly identified the configuration path regression, missing input, and expected log/config/diff evidence chain.
 - Reset only the isolated synthetic demo using its documented procedure; its one-shot unit completed successfully with the healthy configuration restored.
+- Pruned stale unreachable Git objects left by earlier history rewriting and confirmed the remaining object database is clean of private deployment patterns.
+- Added public-safe release hygiene: Apache-2.0 licensing, packaging metadata, a generic Agent configuration example, corrected CLI documentation, and broader local-artifact exclusions.
 
 ## Current work
 
-- v0.1 external access and synthetic acceptance are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
+- v0.1 external access, synthetic acceptance, and public-release cleanup are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Keep the isolated demo healthy unless a new blind-diagnosis run is explicitly requested.
+- Create the v0.1.0 release tag after final review and explicit authorization.
