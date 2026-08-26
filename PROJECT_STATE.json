@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "status": "blind_synthetic_diagnosis_complete",
+  "status": "synthetic_acceptance_passed_demo_reset",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -28,8 +28,11 @@
     "Verified external out-of-scope read_file rejection",
     "Completed blind synthetic-incident diagnosis with six external R0 capability calls only",
     "Identified a configuration regression referencing a missing input file",
-    "Confirmed no SSH or non-RelayMe remote access was used for blind diagnosis"
+    "Confirmed no SSH or non-RelayMe remote access was used for blind diagnosis",
+    "Accepted blind diagnosis against private ground truth: PASS",
+    "Confirmed the configuration regression, missing input, and expected evidence chain",
+    "Reset only the isolated synthetic demo to its healthy one-shot completion state"
   ],
-  "current_work": "Private-network external CLI access and blind synthetic diagnosis are validated; deployment details and private ground truth remain outside Git",
-  "next_action": "Perform a separate evaluation comparing the blind diagnosis with the private ground truth"
+  "current_work": "v0.1 private-network external CLI access and synthetic acceptance are validated; deployment details and private ground truth remain outside Git",
+  "next_action": "Keep the isolated demo healthy unless a new blind-diagnosis run is explicitly requested"
 }

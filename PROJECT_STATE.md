@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.1 external client interface implemented; blind synthetic-incident diagnosis complete over private networking.
+v0.1 external client interface implemented; synthetic end-to-end acceptance test passed and the demo is reset healthy.
 
 ## Completed
 
@@ -24,11 +24,13 @@ v0.1 external client interface implemented; blind synthetic-incident diagnosis c
 - Verified an external out-of-scope file request remains rejected by the Host Agent.
 - Completed a blind diagnosis of the isolated synthetic incident using six external R0 capability calls only; the evidence identifies a configuration regression that references a missing input file.
 - Confirmed the blind diagnosis used no SSH or other non-RelayMe remote access path, and did not inspect private ground truth.
+- Evaluated the blind diagnosis against private ground truth: PASS. It correctly identified the configuration path regression, missing input, and expected log/config/diff evidence chain.
+- Reset only the isolated synthetic demo using its documented procedure; its one-shot unit completed successfully with the healthy configuration restored.
 
 ## Current work
 
-- Private-network external access and blind diagnosis are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
+- v0.1 external access and synthetic acceptance are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Perform a separate evaluation that compares the recorded blind diagnosis with the private ground truth.
+- Keep the isolated demo healthy unless a new blind-diagnosis run is explicitly requested.
