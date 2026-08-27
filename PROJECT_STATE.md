@@ -44,11 +44,12 @@ v0.2 release candidate metadata is prepared; the synthetic demo is reset healthy
 - Standardized generic MCP server tool names so client namespace prefixes yield clean `relayme_*` names.
 - Revalidated the isolated blind diagnosis with the same restricted OpenCode model: it discovered registered resources through RelayMe, identified the configuration reference to the absent input file, and used no bypass access. Evaluation against the private ground truth: PASS. The fixture was restored healthy.
 - Rewrote repository commit identity metadata to the public-safe project identity, recreated the historical v0.1.0 tag at its rewritten commit, and pruned pre-rewrite objects.
+- Began an Antigravity second-client interoperability validation using its documented local MCP configuration and a RelayMe-only permission policy. The installed local agent API requires an app-issued authenticated session and no standalone launcher was available; no RelayMe MCP call was made and the synthetic fixture was untouched.
 
 ## Current work
 
-- v0.2 release-candidate implementation is validated. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
+- v0.2.0 is tagged and its implementation remains unchanged. Antigravity second-client validation is pending a supported authenticated CLI session. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Perform the final v0.2.0 privacy verification and create the release tag.
+- Run the Antigravity MCP validation from its supported authenticated CLI session.

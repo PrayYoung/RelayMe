@@ -49,8 +49,9 @@
     "Added prompt unique-hostname resolution for host-scoped operations with structured unknown and ambiguous identifier errors",
     "Standardized generic MCP server tool names so client namespace prefixes produce clean relayme_* names",
     "Repeated the restricted OpenCode blind diagnosis with the same model: it discovered registered resources through RelayMe, identified the configured absent input file, used no bypass access, and evaluated PASS against private ground truth; fixture restored healthy",
-    "Rewrote repository commit identity metadata to the public-safe project identity, recreated the historical v0.1.0 tag at its rewritten commit, and pruned pre-rewrite objects"
+    "Rewrote repository commit identity metadata to the public-safe project identity, recreated the historical v0.1.0 tag at its rewritten commit, and pruned pre-rewrite objects",
+    "Began an Antigravity second-client interoperability validation using its documented local MCP configuration and a RelayMe-only permission policy; its installed local agent API requires an app-issued authenticated session, so no RelayMe MCP call was made and the synthetic fixture was untouched"
   ],
-  "current_work": "v0.2 release-candidate implementation is validated; read-only resource discovery and agent-friendly host identifiers close the identified UX gap; the isolated synthetic fixture is healthy; deployment details and private ground truth remain outside Git",
-  "next_action": "Perform the final v0.2.0 privacy verification and create the release tag"
+  "current_work": "v0.2.0 is tagged and its implementation remains unchanged; Antigravity second-client validation is pending a supported authenticated CLI session; read-only resource discovery and agent-friendly host identifiers close the identified UX gap; the isolated synthetic fixture is healthy; deployment details and private ground truth remain outside Git",
+  "next_action": "Run the Antigravity MCP validation from its supported authenticated CLI session"
 }
