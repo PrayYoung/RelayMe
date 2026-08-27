@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "status": "reboot_recovery_validated",
+  "status": "synthetic_fixture_ready_for_blind_diagnosis",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -42,8 +42,9 @@
     "Configured OpenCode to launch the generic MCP adapter from protected local client configuration; validated all six R0 tools against the enrolled demo host and an outside-root read_file rejection through MCP, with no non-RelayMe tool call recorded",
     "Added Controller support for protected local bootstrap-token files to avoid bootstrap-secret command-line exposure",
     "Installed local-only systemd units for Controller and Agent with Tailscale/network ordering and bounded restart-on-failure behavior",
-    "Validated controlled host reboot recovery: private Controller listener, existing Agent credential reconnection, and external scoped list_hosts without manual RelayMe startup"
+    "Validated controlled host reboot recovery: private Controller listener, existing Agent credential reconnection, and external scoped list_hosts without manual RelayMe startup",
+    "Validated the isolated synthetic demo fixture after host recovery: repeatable healthy and documented broken states, with RelayMe log, file-read, and Git-diff observability; fixture left broken for blind diagnosis"
   ],
-  "current_work": "v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, reboot recovery, and OpenCode MCP smoke testing are validated; deployment details and private ground truth remain outside Git",
-  "next_action": "Reset the isolated synthetic incident to its documented broken state, then run the OpenCode blind diagnosis without exposing ground truth"
+  "current_work": "v0.1 external access, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, reboot recovery, and OpenCode MCP smoke testing are validated; the isolated synthetic fixture is prepared in its documented broken state for blind diagnosis; deployment details and private ground truth remain outside Git",
+  "next_action": "Run the OpenCode blind diagnosis against the prepared isolated synthetic incident without exposing ground truth"
 }

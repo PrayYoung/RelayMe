@@ -37,11 +37,12 @@ v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed an
 - Added Controller support for a protected local bootstrap-token file, avoiding bootstrap-secret command-line exposure in service managers.
 - Installed local-only systemd units for the Controller and Host Agent with network/Tailscale ordering and bounded restart-on-failure behavior; no unit or deployment configuration is tracked in Git.
 - Validated a controlled host reboot: Tailscale returned, the Controller resumed its private listener, the Agent reconnected using its existing credential, and an external scoped `list_hosts` call reported the host online without manual RelayMe startup.
+- Validated the isolated synthetic demo fixture after host recovery: its static one-shot unit runs successfully with healthy configuration, reliably fails with the documented broken configuration, and is observable through RelayMe logs, file reads, and Git diffs. The fixture is left broken for the next blind diagnosis.
 
 ## Current work
 
-- v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, reboot recovery, and OpenCode MCP smoke testing are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
+- v0.1 external access, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, reboot recovery, and OpenCode MCP smoke testing are validated. The isolated synthetic fixture is prepared in its documented broken state for blind diagnosis. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Reset the isolated synthetic incident to its documented broken state, then run the OpenCode blind diagnosis without exposing ground truth.
+- Run the OpenCode blind diagnosis against the prepared isolated synthetic incident without exposing ground truth.
