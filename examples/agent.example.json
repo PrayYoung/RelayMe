@@ -10,5 +10,23 @@
     }
   },
   "services": ["example.service"],
-  "filesystems": ["/"]
+  "filesystems": ["/"],
+  "execution_state_file": "agent-execution-state.json",
+  "execution_result_retention_seconds": 3600,
+  "registered_tasks": {
+    "example-health-check": {
+      "description": "Run the administrator-approved example application health check.",
+      "executable": "/usr/bin/true",
+      "argv": ["/usr/bin/true"],
+      "working_directory": "/srv/example-app",
+      "environment": {"LANG": "C.UTF-8"},
+      "timeout_seconds": 30,
+      "max_stdout_bytes": 65536,
+      "max_stderr_bytes": 65536,
+      "max_concurrent": 1,
+      "cooldown_seconds": 30,
+      "idempotent": true,
+      "run_as": "agent"
+    }
+  }
 }

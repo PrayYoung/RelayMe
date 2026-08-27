@@ -3,6 +3,7 @@ import os
 import tempfile
 import threading
 import unittest
+import sys
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -66,6 +67,66 @@ class AgentPolicyTests(unittest.TestCase):
         self.assertEqual(len(result_calls), 2)
         sleep.assert_called_once_with(1)
 
+    def test_agent_forwards_successful_r1_result_with_terminal_status(self):
+        task = {"task_id": "execution", "capability": "run_registered_task", "arguments": {"task_id": "safe"}}
+        result = {"execution_id": "execution", "task_id": "safe", "state": "succeeded"}
+        calls = [{"ok": True}, {"task": task}, {"ok": True}, KeyboardInterrupt()]
+        with patch("relayme.agent.credentials", return_value={"host_id": "host", "credential": "existing"}), \
+             patch("relayme.agent.request", side_effect=calls) as request, \
+             patch.object(AgentPolicy, "execute", return_value=result):
+            with self.assertRaises(KeyboardInterrupt): run({"controller_url": "http://controller", "allowed_roots": []})
+        posted = [call for call in request.call_args_list if call.args[0].endswith("/agent/tasks/result")][0]
+        self.assertEqual(posted.args[2]["status"], "SUCCEEDED")
+
+
+class RegisteredTaskPolicyTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name) / "allowed"; self.root.mkdir()
+        self.config = {
+            "allowed_roots": [str(self.root)], "repos": {}, "services": [],
+            "execution_state_file": str(Path(self.temp.name) / "execution-state.json"),
+            "registered_tasks": {"demo-health-check": {
+                "description": "Deterministic demo check", "executable": sys.executable,
+                "argv": [sys.executable, "-c", "import os; print(os.getenv('SECRET', 'clean'))"],
+                "working_directory": str(self.root), "environment": {"LANG": "C.UTF-8"},
+                "timeout_seconds": 2, "max_stdout_bytes": 64, "max_stderr_bytes": 64,
+                "max_concurrent": 1, "cooldown_seconds": 0, "idempotent": True, "run_as": "agent"
+            }}
+        }
+    def tearDown(self): self.temp.cleanup()
+    def test_fixed_policy_clean_environment_and_duplicate_execution(self):
+        with patch.dict(os.environ, {"SECRET": "leak"}, clear=True):
+            policy = AgentPolicy(self.config)
+            result = policy.execute("run_registered_task", {"task_id": "demo-health-check"}, "execution-1")
+        self.assertEqual(result["state"], "succeeded"); self.assertEqual(result["stdout"].strip(), "clean")
+        self.assertEqual(policy.execute("run_registered_task", {"task_id": "demo-health-check"}, "execution-1"), result)
+        self.assertEqual(AgentPolicy(self.config).execute("run_registered_task", {"task_id": "demo-health-check"}, "execution-1"), result)
+        self.assertNotIn(sys.executable, policy.resources()["registered_tasks"][0].values())
+    def test_unregistered_task_client_fields_and_root_are_rejected(self):
+        policy = AgentPolicy(self.config)
+        with self.assertRaisesRegex(PolicyError, "not available"): policy.execute("run_registered_task", {"task_id": "missing"}, "execution-2")
+        with self.assertRaisesRegex(PolicyError, "invalid"): policy.execute("run_registered_task", {"task_id": "demo-health-check", "argv": ["evil"]}, "execution-3")
+        with patch("relayme.agent.os.geteuid", return_value=0):
+            with self.assertRaisesRegex(PolicyError, "root"): policy.execute("run_registered_task", {"task_id": "demo-health-check"}, "execution-4")
+    def test_cwd_output_limits_cooldown_and_timeout(self):
+        self.config["registered_tasks"]["demo-health-check"]["argv"] = [sys.executable, "-c", "import sys; print('x'*200); print('y'*200, file=sys.stderr)"]
+        self.config["registered_tasks"]["demo-health-check"]["max_stdout_bytes"] = 10
+        self.config["registered_tasks"]["demo-health-check"]["max_stderr_bytes"] = 10
+        self.config["registered_tasks"]["demo-health-check"]["cooldown_seconds"] = 60
+        policy = AgentPolicy(self.config)
+        result = policy.execute("run_registered_task", {"task_id": "demo-health-check"}, "execution-5")
+        self.assertTrue(result["stdout_truncated"]); self.assertTrue(result["stderr_truncated"])
+        with self.assertRaisesRegex(PolicyError, "cooldown"): policy.execute("run_registered_task", {"task_id": "demo-health-check"}, "execution-6")
+        self.config["registered_tasks"]["demo-health-check"].update({"argv": [sys.executable, "-c", "import time; time.sleep(10)"], "timeout_seconds": 1, "cooldown_seconds": 0})
+        timed = AgentPolicy(self.config).execute("run_registered_task", {"task_id": "demo-health-check"}, "execution-7")
+        self.assertEqual(timed["state"], "timed_out")
+    def test_task_policy_requires_canonical_allowed_cwd_and_fixed_identity(self):
+        bad = json.loads(json.dumps(self.config)); bad["registered_tasks"]["demo-health-check"]["working_directory"] = "/"
+        with self.assertRaisesRegex(ValueError, "outside allowed roots"): AgentPolicy(bad)
+        bad = json.loads(json.dumps(self.config)); bad["registered_tasks"]["demo-health-check"]["idempotent"] = False
+        with self.assertRaisesRegex(ValueError, "idempotent"): AgentPolicy(bad)
+
 
 class ControllerTests(unittest.TestCase):
     def setUp(self):
@@ -116,6 +177,31 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(client.exception.code, 403)
         client.exception.close()
 
+    def test_r1_requires_exact_task_scope_and_idempotency_reuses_execution(self):
+        agent = self.enroll()
+        missing = self.store.create_client("missing", {"hosts": [agent["host_id"]], "capabilities": ["host_status"]}, None)
+        with self.assertRaises(HTTPError) as denied:
+            self.call("POST", "/v1/tasks", {"host": agent["host_id"], "capability": "run_registered_task", "arguments": {"task_id": "demo-health-check"}}, missing)
+        self.assertEqual(denied.exception.code, 403); denied.exception.close()
+        token = self.store.create_client("runner", {"hosts": [agent["host_id"]], "capabilities": ["run_registered_task:demo-health-check"]}, None)
+        body = {"host": agent["host_id"], "capability": "run_registered_task", "arguments": {"task_id": "demo-health-check", "idempotency_key": "opaque-key"}}
+        first = self.call("POST", "/v1/tasks", body, token)["task_id"]
+        self.assertEqual(self.call("POST", "/v1/tasks", body, token)["task_id"], first)
+        delivered = self.call("GET", "/v1/agent/tasks/next?wait_seconds=0", token=agent["credential"], agent=agent["host_id"])["task"]
+        self.assertEqual(delivered["task_id"], first)
+        self.assertIsNone(self.call("GET", "/v1/agent/tasks/next?wait_seconds=0", token=agent["credential"], agent=agent["host_id"])["task"])
+        result = {"execution_id": first, "task_id": "demo-health-check", "task_identity": "policy-hash", "state": "succeeded", "exit_code": 0, "duration_ms": 1, "timeout_seconds": 2, "stdout": "ok", "stderr": "", "stdout_bytes": 2, "stderr_bytes": 0, "stdout_truncated": False, "stderr_truncated": False, "stdout_hash": "a", "stderr_hash": "b", "terminating_signal": None}
+        self.call("POST", "/v1/agent/tasks/result", {"task_id": first, "status": "SUCCEEDED", "result": result}, token=agent["credential"], agent=agent["host_id"])
+        audit = self.store.db.execute("SELECT task_id, idempotency_key_hash, stdout_hash FROM execution_audit WHERE execution_id=?", (first,)).fetchone()
+        self.assertEqual((audit["task_id"], audit["stdout_hash"]), ("demo-health-check", "a")); self.assertNotEqual(audit["idempotency_key_hash"], "opaque-key")
+
+    def test_r1_rejects_client_controlled_execution_fields(self):
+        agent = self.enroll()
+        token = self.store.create_client("runner", {"hosts": [agent["host_id"]], "capabilities": ["run_registered_task:demo-health-check"]}, None)
+        with self.assertRaises(HTTPError) as rejected:
+            self.call("POST", "/v1/tasks", {"host": agent["host_id"], "capability": "run_registered_task", "arguments": {"task_id": "demo-health-check", "argv": ["/bin/sh"]}}, token)
+        self.assertEqual(rejected.exception.code, 400); rejected.exception.close()
+
     def test_remote_client_token_creation_is_not_exposed(self):
         with self.assertRaises(HTTPError) as client:
             self.call("POST", "/v1/admin/client-tokens", {"identity": "remote", "scopes": {"hosts": ["*"], "capabilities": ["list_hosts"]}})
@@ -127,7 +213,7 @@ class ControllerTests(unittest.TestCase):
         self.call("POST", "/v1/agent/heartbeat", {"metadata": {"agent_version": "0.2.0", "resources": {"services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"]}}}, token=agent["credential"], agent=agent["host_id"])
         token = self.store.create_client("reader", {"hosts": [agent["host_id"]], "capabilities": ["list_hosts", "list_host_resources"]}, None)
         resources = self.call("GET", "/v1/hosts/" + agent["host_id"] + "/resources", token=token)["resources"]
-        self.assertEqual(resources, {"host_id": agent["host_id"], "hostname": "example-host", "services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"]})
+        self.assertEqual(resources, {"host_id": agent["host_id"], "hostname": "example-host", "services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"], "registered_tasks": []})
         self.assertNotIn("resources", self.call("GET", "/v1/hosts", token=token)["hosts"][0]["metadata"])
 
     def test_hostname_and_host_id_resolve_immediately_for_tasks(self):

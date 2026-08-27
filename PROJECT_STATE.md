@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.2 release candidate metadata is prepared; the synthetic demo is reset healthy. The generic MCP adapter and the agent-facing discovery/identifier improvements are validated.
+v0.3 bounded registered-task implementation is locally and real-host validated on the isolated synthetic demo. The synthetic demo remains healthy.
 
 ## Completed
 
@@ -45,11 +45,15 @@ v0.2 release candidate metadata is prepared; the synthetic demo is reset healthy
 - Revalidated the isolated blind diagnosis with the same restricted OpenCode model: it discovered registered resources through RelayMe, identified the configuration reference to the absent input file, and used no bypass access. Evaluation against the private ground truth: PASS. The fixture was restored healthy.
 - Rewrote repository commit identity metadata to the public-safe project identity, recreated the historical v0.1.0 tag at its rewritten commit, and pruned pre-rewrite objects.
 - Validated the generic MCP adapter with standalone Antigravity CLI using a local RelayMe-only policy. It discovered all seven R0 tools, completed the MCP smoke test (including an Agent-side outside-root rejection), and passed the blind synthetic-incident diagnosis against the private ground truth. The fixture was restored healthy. No RelayMe code changed.
+- Implemented the single bounded R1 `run_registered_task` capability with locally registered fixed argv, cwd, clean environment, non-root execution, timeout/process-group cleanup, bounded output, cooldown, one-task concurrency, exact task scopes, Controller-generated execution IDs, short-lived Agent duplicate-result retention, and durable execution audit metadata.
+- Extended resource discovery, CLI, and generic MCP with safe registered-task metadata and `run_registered_task`; no arbitrary arguments, shell, SSH, mutation, or model-specific behavior was added.
+- Validated the v0.3 package in a clean temporary environment with the MCP SDK installed: all 38 regression tests passed and the MCP server constructed successfully.
+- Completed real-host R1 acceptance using exactly one isolated `demo-health-check` task. Resource discovery, scoped CLI execution, generic MCP stdio execution, task-level authorization rejection, idempotency replay, audit metadata, non-root Agent identity, and all existing R0 capabilities passed. The disposable acceptance credential was revoked and removed after validation.
 
 ## Current work
 
-- v0.2.0 is tagged and its implementation remains unchanged. Standalone Antigravity CLI now independently validates the vendor-neutral MCP adapter. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
+- v0.3 bounded execution is implemented and accepted on the isolated real-host demo. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Review the completed second-client validation before deciding whether to publish the tagged v0.2.0 release.
+- Perform a focused release review before creating a v0.3.0 tag.

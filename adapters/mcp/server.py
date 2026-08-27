@@ -25,6 +25,7 @@ TOOL_NAMES = (
     "read_logs",
     "read_file",
     "git_diff",
+    "run_registered_task",
 )
 
 TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
@@ -35,6 +36,7 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "read_logs": {"description": "Read bounded logs for a service registered by the Host Agent. Call list_host_resources first if its identifier is unknown; host accepts host_id or unique hostname.", "parameters": {"host": str, "service": str, "last_n": (int, type(None)), "since": (str, type(None)), "max_bytes": (int, type(None))}},
     "read_file": {"description": "Read a file only within Agent-allowed roots. Call list_host_resources first if its allowed root is unknown; host accepts host_id or unique hostname.", "parameters": {"host": str, "path": str}},
     "git_diff": {"description": "Read the Git diff for a repository registered by the Host Agent. Call list_host_resources first if its identifier is unknown; host accepts host_id or unique hostname.", "parameters": {"host": str, "repo": str}},
+    "run_registered_task": {"description": "Run one idempotent, bounded task registered locally by the Host Agent. Call list_host_resources first to discover valid task IDs. The task has fixed local command, environment, working directory, and limits; no arguments can be supplied.", "parameters": {"host": str, "task_id": str, "idempotency_key": (str, type(None))}},
 }
 
 
@@ -114,6 +116,11 @@ class RelayMeMcpAdapter:
             return self._result(self.client.list_hosts())
         host = self._string(arguments, "host")
         if tool == "list_host_resources": return self._result(self.client.list_host_resources(host))
+        if tool == "run_registered_task":
+            task_args = {"task_id": self._string(arguments, "task_id")}
+            if arguments.get("idempotency_key") is not None: task_args["idempotency_key"] = self._string(arguments, "idempotency_key")
+            if set(arguments) - {"host", "task_id", "idempotency_key"}: raise ValueError("run_registered_task accepts only host, task_id, and idempotency_key")
+            return self._result(self.client.run_task(host, "run_registered_task", task_args))
         mapping = {
             "host_status": ("host_status", {}),
             "process_list": ("process_list", {}),
@@ -175,6 +182,10 @@ def create_mcp_server(adapter: RelayMeMcpAdapter):
 
     @server.tool(name="git_diff", description=TOOL_SCHEMAS["git_diff"]["description"])
     def git_diff(host: str, repo: str) -> dict[str, Any]: return invoke("git_diff", {"host": host, "repo": repo})
+
+    @server.tool(name="run_registered_task", description=TOOL_SCHEMAS["run_registered_task"]["description"])
+    def run_registered_task(host: str, task_id: str, idempotency_key: str | None = None) -> dict[str, Any]:
+        return invoke("run_registered_task", {"host": host, "task_id": task_id, "idempotency_key": idempotency_key})
 
     return server
 

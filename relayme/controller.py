@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-CAPABILITIES = frozenset({"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff"})
+R1_CAPABILITY = "run_registered_task"
+CAPABILITIES = frozenset({"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff", R1_CAPABILITY})
 TERMINAL = frozenset({"SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED"})
 
 
@@ -47,8 +48,16 @@ class Store:
               registered_at INTEGER NOT NULL, last_heartbeat INTEGER, status TEXT NOT NULL, metadata TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS tasks (task_id TEXT PRIMARY KEY, actor TEXT NOT NULL, host_id TEXT NOT NULL, capability TEXT NOT NULL,
               arguments TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER,
-              result_bytes INTEGER, result_hash TEXT, error TEXT);
+              result_bytes INTEGER, result_hash TEXT, error TEXT, idempotency_key TEXT);
+            CREATE TABLE IF NOT EXISTS execution_audit (execution_id TEXT PRIMARY KEY, actor TEXT NOT NULL, host_id TEXT NOT NULL,
+              task_id TEXT NOT NULL, task_identity TEXT, idempotency_key_hash TEXT, created_at INTEGER NOT NULL, started_at INTEGER,
+              finished_at INTEGER, duration_ms INTEGER, state TEXT, exit_code INTEGER, terminating_signal INTEGER,
+              timeout_seconds INTEGER, stdout_bytes INTEGER, stderr_bytes INTEGER, stdout_truncated INTEGER, stderr_truncated INTEGER,
+              stdout_hash TEXT, stderr_hash TEXT, rejection_code TEXT);
             """)
+            columns = {row[1] for row in self.db.execute("PRAGMA table_info(tasks)")}
+            if "idempotency_key" not in columns:
+                self.db.execute("ALTER TABLE tasks ADD COLUMN idempotency_key TEXT")
             self.db.commit()
 
     def create_enrollment(self, ttl: int) -> str:
@@ -63,7 +72,8 @@ class Store:
             raise ValueError("client identity is required")
         capabilities = scopes.get("capabilities", [])
         hosts = scopes.get("hosts", [])
-        if not isinstance(capabilities, list) or not capabilities or not set(capabilities).issubset(CAPABILITIES):
+        valid_r1_scope = lambda scope: isinstance(scope, str) and scope.startswith(R1_CAPABILITY + ":") and len(scope) > len(R1_CAPABILITY) + 1
+        if not isinstance(capabilities, list) or not capabilities or not all(capability in CAPABILITIES - {R1_CAPABILITY} or valid_r1_scope(capability) for capability in capabilities):
             raise ValueError("invalid client capabilities")
         if not isinstance(hosts, list) or not all(isinstance(host, str) and host for host in hosts):
             raise ValueError("invalid client host scope")
@@ -140,13 +150,20 @@ class Store:
         resources = json.loads(host["metadata"]).get("resources", {})
         return {"host_id": host["host_id"], "hostname": host["hostname"],
                 "services": list(resources.get("services", [])), "repositories": list(resources.get("repositories", [])),
-                "allowed_file_roots": list(resources.get("allowed_file_roots", []))}
+                "allowed_file_roots": list(resources.get("allowed_file_roots", [])),
+                "registered_tasks": list(resources.get("registered_tasks", []))}
 
     def create_task(self, actor: str, host: str, capability: str, arguments: dict[str, Any]) -> str:
+        idempotency_key = arguments.get("idempotency_key") if capability == R1_CAPABILITY else None
+        if idempotency_key:
+            with self.lock:
+                existing = self.db.execute("SELECT task_id FROM tasks WHERE actor=? AND host_id=? AND capability=? AND arguments=? AND idempotency_key=? ORDER BY created_at LIMIT 1",
+                                           (actor, host, capability, json.dumps(arguments, sort_keys=True), idempotency_key)).fetchone()
+                if existing: return existing["task_id"]
         task_id = str(uuid.uuid4())
         with self.changed:
-            self.db.execute("INSERT INTO tasks (task_id,actor,host_id,capability,arguments,status,created_at) VALUES (?,?,?,?,?,?,?)",
-                            (task_id, actor, host, capability, json.dumps(arguments), "QUEUED", now()))
+            self.db.execute("INSERT INTO tasks (task_id,actor,host_id,capability,arguments,status,created_at,idempotency_key) VALUES (?,?,?,?,?,?,?,?)",
+                            (task_id, actor, host, capability, json.dumps(arguments, sort_keys=True), "QUEUED", now(), idempotency_key))
             self.db.commit()
             self.changed.notify_all()
         return task_id
@@ -183,6 +200,16 @@ class Store:
             self.db.commit()
             if changed and result is not None:
                 self.results[task_id] = result
+            if changed and isinstance(result, dict) and result.get("execution_id") == task_id:
+                task = self.db.execute("SELECT actor, host_id, arguments, created_at, started_at FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+                arguments = json.loads(task["arguments"])
+                self.db.execute("INSERT OR REPLACE INTO execution_audit VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (task_id, task["actor"], task["host_id"], str(arguments.get("task_id", "")), result.get("task_identity"),
+                     token_hash(arguments["idempotency_key"]) if arguments.get("idempotency_key") else None, task["created_at"], task["started_at"], now(), result.get("duration_ms"),
+                     result.get("state"), result.get("exit_code"), result.get("terminating_signal"), result.get("timeout_seconds"),
+                     result.get("stdout_bytes"), result.get("stderr_bytes"), int(bool(result.get("stdout_truncated"))), int(bool(result.get("stderr_truncated"))),
+                     result.get("stdout_hash"), result.get("stderr_hash"), (error or {}).get("code") if isinstance(error, dict) else None))
+                self.db.commit()
         return bool(changed)
 
     def task(self, task_id: str) -> dict[str, Any] | None:
@@ -236,8 +263,13 @@ class Api(BaseHTTPRequestHandler):
         if not host_id or not self.server.store.agent(host_id, self.bearer()): self.fail(HTTPStatus.UNAUTHORIZED, "invalid agent credential")
         return host_id
     @staticmethod
-    def allowed(scopes: dict[str, Any], host: str, capability: str) -> bool:
-        return bool(scopes.get("admin") or (capability in scopes.get("capabilities", []) and ("*" in scopes.get("hosts", []) or host in scopes.get("hosts", []))))
+    def allowed(scopes: dict[str, Any], host: str, capability: str, arguments: dict[str, Any] | None = None) -> bool:
+        if scopes.get("admin"): return True
+        if "*" not in scopes.get("hosts", []) and host not in scopes.get("hosts", []): return False
+        if capability == R1_CAPABILITY:
+            task_id = (arguments or {}).get("task_id")
+            return isinstance(task_id, str) and (R1_CAPABILITY + ":" + task_id) in scopes.get("capabilities", [])
+        return capability in scopes.get("capabilities", [])
     def do_POST(self) -> None:
         try:
             path, body = urlparse(self.path).path, self.body()
@@ -258,12 +290,15 @@ class Api(BaseHTTPRequestHandler):
             if path == "/v1/tasks":
                 actor, scopes = self.client(); host, cap, args = body.get("host"), body.get("capability"), body.get("arguments", {})
                 if not isinstance(host, str) or cap not in CAPABILITIES - {"list_hosts", "list_host_resources"} or not isinstance(args, dict): self.fail(400, "invalid task")
+                if cap == R1_CAPABILITY:
+                    if set(args) - {"task_id", "idempotency_key"} or not isinstance(args.get("task_id"), str) or not args["task_id"] or ("idempotency_key" in args and (not isinstance(args["idempotency_key"], str) or not args["idempotency_key"] or len(args["idempotency_key"]) > 256)):
+                        self.fail(400, "invalid registered-task request", "invalid_registered_task_request")
                 resolved, error = self.server.store.resolve_host(host)
                 if error == "unknown_host": self.fail(404, "host identifier is unknown", error)
                 if error == "ambiguous_hostname": self.fail(409, "hostname is ambiguous; use host_id", error)
                 assert resolved
                 host_id = resolved["host_id"]
-                if not self.allowed(scopes, host_id, cap): self.fail(403, "scope does not permit task")
+                if not self.allowed(scopes, host_id, cap, args): self.fail(403, "scope does not permit task")
                 self.reply(201, {"task_id": self.server.store.create_task(actor, host_id, cap, args), "status": "QUEUED"}); return
             self.fail(404, "not found")
         except RuntimeError: pass

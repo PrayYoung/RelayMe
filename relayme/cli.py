@@ -51,6 +51,7 @@ def main() -> None:
     logs = commands.add_parser("logs"); logs.add_argument("host"); logs.add_argument("service"); logs.add_argument("--last-n", type=int); logs.add_argument("--since"); logs.add_argument("--max-bytes", type=int)
     read_file = commands.add_parser("read-file"); read_file.add_argument("host"); read_file.add_argument("path")
     git_diff = commands.add_parser("git-diff"); git_diff.add_argument("host"); git_diff.add_argument("repo")
+    run_task = commands.add_parser("run-task"); run_task.add_argument("host"); run_task.add_argument("task_id"); run_task.add_argument("--idempotency-key")
     args = parser.parse_args()
     if not args.url or not args.token: parser.error("--url/RELAYME_URL and --token/RELAYME_TOKEN are required")
     if args.command in {"list-hosts", "hosts"}: value = call(args.url, args.token, "GET", "/v1/hosts", ca_cert=args.ca_cert)
@@ -58,6 +59,11 @@ def main() -> None:
     elif args.command == "create-enrollment-token": value = call(args.url, args.token, "POST", "/v1/admin/enrollment-tokens", {"ttl_seconds": args.ttl_seconds}, args.ca_cert)
     elif args.command == "task": value = call(args.url, args.token, "POST", "/v1/tasks", {"host": args.host, "capability": args.capability, "arguments": json.loads(args.arguments)}, args.ca_cert)
     elif args.command == "get-task": value = call(args.url, args.token, "GET", "/v1/tasks/" + args.task_id, ca_cert=args.ca_cert)
+    elif args.command == "run-task":
+        arguments = {"task_id": args.task_id}
+        if args.idempotency_key: arguments["idempotency_key"] = args.idempotency_key
+        created = call(args.url, args.token, "POST", "/v1/tasks", {"host": args.host, "capability": "run_registered_task", "arguments": arguments}, args.ca_cert)
+        value = wait_for_task(args.url, args.token, created["task_id"], args.ca_cert, args.wait_seconds)
     else:
         if args.command == "status": host, capability, arguments = args.host, "host_status", {}
         elif args.command == "processes": host, capability, arguments = args.host, "process_list", {}
