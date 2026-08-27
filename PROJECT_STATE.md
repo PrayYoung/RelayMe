@@ -37,12 +37,13 @@ v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed an
 - Added Controller support for a protected local bootstrap-token file, avoiding bootstrap-secret command-line exposure in service managers.
 - Installed local-only systemd units for the Controller and Host Agent with network/Tailscale ordering and bounded restart-on-failure behavior; no unit or deployment configuration is tracked in Git.
 - Validated a controlled host reboot: Tailscale returned, the Controller resumed its private listener, the Agent reconnected using its existing credential, and an external scoped `list_hosts` call reported the host online without manual RelayMe startup.
-- Validated the isolated synthetic demo fixture after host recovery: its static one-shot unit runs successfully with healthy configuration, reliably fails with the documented broken configuration, and is observable through RelayMe logs, file reads, and Git diffs. Its private reset mechanics no longer rely on an inapplicable `reset-failed` step. The fixture is left broken for the next blind diagnosis.
+- Validated the isolated synthetic demo fixture after host recovery: its static one-shot unit runs successfully with healthy configuration, reliably fails with the documented broken configuration, and is observable through RelayMe logs, file reads, and Git diffs. Its private reset mechanics no longer rely on an inapplicable `reset-failed` step.
+- Completed one restricted OpenCode blind-diagnosis run using only the RelayMe MCP namespace. It did not identify the incident root cause because the six R0 tools do not provide registered-resource discovery and the client used non-registered labels; evaluation was FAIL. No bypass tool was attempted, and the fixture was restored healthy.
 
 ## Current work
 
-- v0.1 external access, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, reboot recovery, and OpenCode MCP smoke testing are validated. The isolated synthetic fixture is prepared in its documented broken state for blind diagnosis. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
+- v0.1 external access, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, reboot recovery, and OpenCode MCP smoke testing are validated. One restricted OpenCode blind run exposed a resource-discovery/identifier UX gap; the isolated synthetic fixture is healthy. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Run the OpenCode blind diagnosis against the prepared isolated synthetic incident without exposing ground truth.
+- Decide whether a future-scope, read-only registered-resource discovery interface is acceptable before repeating the OpenCode blind diagnosis.
