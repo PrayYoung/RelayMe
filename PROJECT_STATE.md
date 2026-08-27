@@ -37,7 +37,7 @@ v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed an
 - Added Controller support for a protected local bootstrap-token file, avoiding bootstrap-secret command-line exposure in service managers.
 - Installed local-only systemd units for the Controller and Host Agent with network/Tailscale ordering and bounded restart-on-failure behavior; no unit or deployment configuration is tracked in Git.
 - Validated a controlled host reboot: Tailscale returned, the Controller resumed its private listener, the Agent reconnected using its existing credential, and an external scoped `list_hosts` call reported the host online without manual RelayMe startup.
-- Validated the isolated synthetic demo fixture after host recovery: its static one-shot unit runs successfully with healthy configuration, reliably fails with the documented broken configuration, and is observable through RelayMe logs, file reads, and Git diffs. The fixture is left broken for the next blind diagnosis.
+- Validated the isolated synthetic demo fixture after host recovery: its static one-shot unit runs successfully with healthy configuration, reliably fails with the documented broken configuration, and is observable through RelayMe logs, file reads, and Git diffs. Its private reset mechanics no longer rely on an inapplicable `reset-failed` step. The fixture is left broken for the next blind diagnosis.
 
 ## Current work
 
