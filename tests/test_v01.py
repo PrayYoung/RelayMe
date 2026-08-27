@@ -124,7 +124,7 @@ class ControllerTests(unittest.TestCase):
 
     def test_list_host_resources_exposes_only_registered_metadata(self):
         agent = self.enroll(metadata={"resources": {"services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"]}, "secret": "not-a-resource"})
-        self.call("POST", "/v1/agent/heartbeat", {"metadata": {"agent_version": "0.1", "resources": {"services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"]}}}, token=agent["credential"], agent=agent["host_id"])
+        self.call("POST", "/v1/agent/heartbeat", {"metadata": {"agent_version": "0.2.0", "resources": {"services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"]}}}, token=agent["credential"], agent=agent["host_id"])
         token = self.store.create_client("reader", {"hosts": [agent["host_id"]], "capabilities": ["list_hosts", "list_host_resources"]}, None)
         resources = self.call("GET", "/v1/hosts/" + agent["host_id"] + "/resources", token=token)["resources"]
         self.assertEqual(resources, {"host_id": agent["host_id"], "hostname": "example-host", "services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"]})

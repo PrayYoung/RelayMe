@@ -1,4 +1,4 @@
-# RelayMe v0.1
+# RelayMe v0.2
 
 RelayMe is a small, vendor-neutral, read-only remote operations bridge. A client creates a task with the Controller; a Host Agent obtains it through outbound long-polling, enforces its local policy, and returns a bounded structured result.
 

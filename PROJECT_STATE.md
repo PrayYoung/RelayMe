@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.1 release cleanup complete; the synthetic demo is reset healthy. The generic MCP adapter and the agent-facing discovery/identifier improvements are validated.
+v0.2 release candidate metadata is prepared; the synthetic demo is reset healthy. The generic MCP adapter and the agent-facing discovery/identifier improvements are validated.
 
 ## Completed
 
@@ -43,11 +43,12 @@ v0.1 release cleanup complete; the synthetic demo is reset healthy. The generic 
 - Added prompt hostname resolution for host-scoped operations while retaining canonical host IDs; unknown and ambiguous identifiers now return structured errors instead of waiting for task expiry.
 - Standardized generic MCP server tool names so client namespace prefixes yield clean `relayme_*` names.
 - Revalidated the isolated blind diagnosis with the same restricted OpenCode model: it discovered registered resources through RelayMe, identified the configuration reference to the absent input file, and used no bypass access. Evaluation against the private ground truth: PASS. The fixture was restored healthy.
+- Rewrote repository commit identity metadata to the public-safe project identity, recreated the historical v0.1.0 tag at its rewritten commit, and pruned pre-rewrite objects.
 
 ## Current work
 
-- v0.1 external access, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, reboot recovery, and OpenCode MCP testing are validated. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
+- v0.2 release-candidate implementation is validated. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Review and release the validated read-only discovery enhancement.
+- Perform the final v0.2.0 privacy verification and create the release tag.

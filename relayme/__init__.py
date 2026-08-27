@@ -1,3 +1,3 @@
-"""RelayMe v0.1: read-only remote operations bridge."""
+"""RelayMe v0.2: read-only remote operations bridge."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
