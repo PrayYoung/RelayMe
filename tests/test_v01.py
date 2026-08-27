@@ -80,9 +80,12 @@ class ControllerTests(unittest.TestCase):
         if agent: headers["X-RelayMe-Host"] = agent
         req = Request(self.url + path, data=json.dumps(body).encode() if body is not None else None, method=method, headers=headers)
         with urlopen(req) as response: return json.loads(response.read())
-    def test_auth_task_delivery_audit_and_duplicate_prevention(self):
+
+    def enroll(self, hostname="example-host", metadata=None):
         enrollment = self.call("POST", "/v1/admin/enrollment-tokens", {"ttl_seconds": 60})["token"]
-        agent = self.call("POST", "/v1/agents/enroll", {"enrollment_token": enrollment, "hostname": "example-host", "metadata": {}})
+        return self.call("POST", "/v1/agents/enroll", {"enrollment_token": enrollment, "hostname": hostname, "metadata": metadata or {}})
+    def test_auth_task_delivery_audit_and_duplicate_prevention(self):
+        agent = self.enroll()
         headers = {"Authorization": "Bearer " + agent["credential"], "X-RelayMe-Host": agent["host_id"]}
         self.call("POST", "/v1/agent/heartbeat", {"metadata": {}}, agent=agent["host_id"], token=agent["credential"])
         token = self.store.create_client("local-cli", {"hosts": [agent["host_id"]], "capabilities": ["host_status"]}, None)
@@ -106,9 +109,10 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(client.exception.code, 401)
         client.exception.close()
     def test_scoped_client_cannot_create_out_of_scope_task(self):
-        token = self.store.create_client("limited", {"hosts": ["example-host"], "capabilities": ["host_status"]}, None)
+        agent = self.enroll()
+        token = self.store.create_client("limited", {"hosts": [agent["host_id"]], "capabilities": ["host_status"]}, None)
         with self.assertRaises(HTTPError) as client:
-            self.call("POST", "/v1/tasks", {"host": "example-host", "capability": "process_list", "arguments": {}}, token)
+            self.call("POST", "/v1/tasks", {"host": agent["host_id"], "capability": "process_list", "arguments": {}}, token)
         self.assertEqual(client.exception.code, 403)
         client.exception.close()
 
@@ -117,6 +121,44 @@ class ControllerTests(unittest.TestCase):
             self.call("POST", "/v1/admin/client-tokens", {"identity": "remote", "scopes": {"hosts": ["*"], "capabilities": ["list_hosts"]}})
         self.assertEqual(client.exception.code, 404)
         client.exception.close()
+
+    def test_list_host_resources_exposes_only_registered_metadata(self):
+        agent = self.enroll(metadata={"resources": {"services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"]}, "secret": "not-a-resource"})
+        self.call("POST", "/v1/agent/heartbeat", {"metadata": {"agent_version": "0.1", "resources": {"services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"]}}}, token=agent["credential"], agent=agent["host_id"])
+        token = self.store.create_client("reader", {"hosts": [agent["host_id"]], "capabilities": ["list_hosts", "list_host_resources"]}, None)
+        resources = self.call("GET", "/v1/hosts/" + agent["host_id"] + "/resources", token=token)["resources"]
+        self.assertEqual(resources, {"host_id": agent["host_id"], "hostname": "example-host", "services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"]})
+        self.assertNotIn("resources", self.call("GET", "/v1/hosts", token=token)["hosts"][0]["metadata"])
+
+    def test_hostname_and_host_id_resolve_immediately_for_tasks(self):
+        agent = self.enroll()
+        token = self.store.create_client("reader", {"hosts": [agent["host_id"]], "capabilities": ["host_status"]}, None)
+        created = self.call("POST", "/v1/tasks", {"host": "example-host", "capability": "host_status", "arguments": {}}, token)["task_id"]
+        delivered = self.call("GET", "/v1/agent/tasks/next?wait_seconds=0", token=agent["credential"], agent=agent["host_id"])["task"]
+        self.assertEqual(delivered["task_id"], created)
+        self.call("POST", "/v1/agent/tasks/result", {"task_id": created, "status": "SUCCEEDED", "result": {}}, token=agent["credential"], agent=agent["host_id"])
+        self.assertEqual(self.call("POST", "/v1/tasks", {"host": agent["host_id"], "capability": "host_status", "arguments": {}}, token)["status"], "QUEUED")
+
+    def test_unknown_and_ambiguous_host_identifiers_fail_explicitly(self):
+        token = self.store.create_client("reader", {"hosts": ["*"], "capabilities": ["host_status"]}, None)
+        with self.assertRaises(HTTPError) as unknown:
+            self.call("POST", "/v1/tasks", {"host": "missing", "capability": "host_status", "arguments": {}}, token)
+        self.assertEqual(unknown.exception.code, 404)
+        self.assertEqual(json.loads(unknown.exception.read())["error"]["code"], "unknown_host")
+        unknown.exception.close()
+        self.enroll("duplicate"); self.enroll("duplicate")
+        with self.assertRaises(HTTPError) as ambiguous:
+            self.call("POST", "/v1/tasks", {"host": "duplicate", "capability": "host_status", "arguments": {}}, token)
+        self.assertEqual(ambiguous.exception.code, 409)
+        self.assertEqual(json.loads(ambiguous.exception.read())["error"]["code"], "ambiguous_hostname")
+        ambiguous.exception.close()
+
+    def test_agent_policy_errors_are_structured_in_task_results(self):
+        agent = self.enroll()
+        task = self.store.create_task("reader", agent["host_id"], "read_file", {"path": "/etc/shadow"})
+        self.assertIsNotNone(self.store.next_task(agent["host_id"], 0))
+        self.assertTrue(self.store.finish_task(agent["host_id"], task, "FAILED", None, {"code": "file_outside_allowed_roots", "message": "path is outside allowed roots"}))
+        self.assertEqual(self.store.task(task)["error"], {"code": "file_outside_allowed_roots", "message": "path is outside allowed roots"})
 
 
 class LocalAdminTests(unittest.TestCase):

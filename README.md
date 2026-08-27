@@ -2,7 +2,7 @@
 
 RelayMe is a small, vendor-neutral, read-only remote operations bridge. A client creates a task with the Controller; a Host Agent obtains it through outbound long-polling, enforces its local policy, and returns a bounded structured result.
 
-It implements only `list_hosts`, `host_status`, `process_list`, `read_logs`, `read_file`, and `git_diff`.
+It implements only read-only R0 observation: `list_hosts`, `list_host_resources`, `host_status`, `process_list`, `read_logs`, `read_file`, and `git_diff`.
 
 ## Local demo
 
@@ -39,6 +39,7 @@ export RELAYME_TOKEN=CHANGE_ME_SCOPED_R0_TOKEN
 export RELAYME_CA_CERT=/secure/local/path/controller-ca.pem
 
 relayme hosts
+relayme list-host-resources HOST_ID
 relayme status HOST_ID
 relayme processes HOST_ID
 relayme logs HOST_ID example.service --last-n 100 --max-bytes 65536
@@ -50,14 +51,17 @@ relayme git-diff HOST_ID example-app
 
 ## MCP adapter
 
-The optional MCP adapter translates standard MCP tool calls to the existing RelayMe Controller HTTP/JSON API. RelayMe Core stays vendor-neutral: the adapter has no host policy, host database, SSH access, or shell fallback. It exposes only the six read-only v0.1 capabilities:
+The optional MCP adapter translates standard MCP tool calls to the existing RelayMe Controller HTTP/JSON API. RelayMe Core stays vendor-neutral: the adapter has no host policy, host database, SSH access, or shell fallback. It exposes only read-only R0 tools. MCP servers publish standard unprefixed names; clients that prefix tools with the configured server name display them as `relayme_list_hosts`, `relayme_list_host_resources`, and so on.
 
-- `relayme_list_hosts`
-- `relayme_host_status`
-- `relayme_process_list`
-- `relayme_read_logs`
-- `relayme_read_file`
-- `relayme_git_diff`
+- `list_hosts`
+- `list_host_resources`
+- `host_status`
+- `process_list`
+- `read_logs`
+- `read_file`
+- `git_diff`
+
+Call `list_hosts` when the host identity is unknown, then `list_host_resources` before service-, repository-, or path-scoped tools. Host-scoped operations accept a canonical host ID or a unique hostname. Discovery returns only resources already registered by the Host Agent; it never lists arbitrary files or system services.
 
 Install RelayMe normally, set the Controller URL and scoped R0 token in the MCP client's local environment (a safe template is [`examples/mcp.env.example`](examples/mcp.env.example)), then launch the standard stdio server:
 

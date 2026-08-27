@@ -18,21 +18,23 @@ from urllib.request import Request, urlopen
 
 
 TOOL_NAMES = (
-    "relayme_list_hosts",
-    "relayme_host_status",
-    "relayme_process_list",
-    "relayme_read_logs",
-    "relayme_read_file",
-    "relayme_git_diff",
+    "list_hosts",
+    "list_host_resources",
+    "host_status",
+    "process_list",
+    "read_logs",
+    "read_file",
+    "git_diff",
 )
 
 TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
-    "relayme_list_hosts": {"description": "List RelayMe hosts visible to the scoped client token.", "parameters": {}},
-    "relayme_host_status": {"description": "Read bounded host health and resource status for one RelayMe host.", "parameters": {"host": str}},
-    "relayme_process_list": {"description": "List processes on one RelayMe host. This is read-only and may be broad.", "parameters": {"host": str}},
-    "relayme_read_logs": {"description": "Read bounded logs for a registered RelayMe service on one host.", "parameters": {"host": str, "service": str, "last_n": (int, type(None)), "since": (str, type(None)), "max_bytes": (int, type(None))}},
-    "relayme_read_file": {"description": "Read a file only when the Host Agent policy allows its path.", "parameters": {"host": str, "path": str}},
-    "relayme_git_diff": {"description": "Read the Git diff for a repository registered with the Host Agent.", "parameters": {"host": str, "repo": str}},
+    "list_hosts": {"description": "List RelayMe hosts visible to this token. Call first when the host identity is unknown; host-scoped tools accept host_id or a unique hostname.", "parameters": {}},
+    "list_host_resources": {"description": "List only registered services, repositories, and allowed file roots for one host. Call before resource-scoped tools when identifiers are unknown. Host accepts host_id or a unique hostname.", "parameters": {"host": str}},
+    "host_status": {"description": "Read bounded host health and resource status. Host accepts host_id or a unique hostname.", "parameters": {"host": str}},
+    "process_list": {"description": "List processes on one host. Read-only; host accepts host_id or a unique hostname.", "parameters": {"host": str}},
+    "read_logs": {"description": "Read bounded logs for a service registered by the Host Agent. Call list_host_resources first if its identifier is unknown; host accepts host_id or unique hostname.", "parameters": {"host": str, "service": str, "last_n": (int, type(None)), "since": (str, type(None)), "max_bytes": (int, type(None))}},
+    "read_file": {"description": "Read a file only within Agent-allowed roots. Call list_host_resources first if its allowed root is unknown; host accepts host_id or unique hostname.", "parameters": {"host": str, "path": str}},
+    "git_diff": {"description": "Read the Git diff for a repository registered by the Host Agent. Call list_host_resources first if its identifier is unknown; host accepts host_id or unique hostname.", "parameters": {"host": str, "repo": str}},
 }
 
 
@@ -40,7 +42,7 @@ class ConfigurationError(ValueError): pass
 
 
 class ControllerError(RuntimeError):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: Any):
         super().__init__(message); self.status, self.message = status, message
 
 
@@ -82,6 +84,7 @@ class ControllerClient:
         except URLError as exc: raise ControllerError(502, f"Controller connection failed: {exc.reason}") from exc
 
     def list_hosts(self) -> dict[str, Any]: return self.request("GET", "/v1/hosts")
+    def list_host_resources(self, host: str) -> dict[str, Any]: return self.request("GET", "/v1/hosts/" + host + "/resources")
 
     def run_task(self, host: str, capability: str, arguments: dict[str, Any]) -> dict[str, Any]:
         created = self.request("POST", "/v1/tasks", {"host": host, "capability": capability, "arguments": arguments})
@@ -106,17 +109,18 @@ class RelayMeMcpAdapter:
         if tool not in TOOL_NAMES: raise ValueError(f"unsupported RelayMe MCP tool: {tool}")
         arguments = arguments or {}
         if not isinstance(arguments, dict): raise ValueError("tool arguments must be an object")
-        if tool == "relayme_list_hosts":
-            if arguments: raise ValueError("relayme_list_hosts accepts no arguments")
+        if tool == "list_hosts":
+            if arguments: raise ValueError("list_hosts accepts no arguments")
             return self._result(self.client.list_hosts())
         host = self._string(arguments, "host")
+        if tool == "list_host_resources": return self._result(self.client.list_host_resources(host))
         mapping = {
-            "relayme_host_status": ("host_status", {}),
-            "relayme_process_list": ("process_list", {}),
-            "relayme_read_file": ("read_file", {"path": self._string(arguments, "path")} if tool == "relayme_read_file" else {}),
-            "relayme_git_diff": ("git_diff", {"repo": self._string(arguments, "repo")} if tool == "relayme_git_diff" else {}),
+            "host_status": ("host_status", {}),
+            "process_list": ("process_list", {}),
+            "read_file": ("read_file", {"path": self._string(arguments, "path")} if tool == "read_file" else {}),
+            "git_diff": ("git_diff", {"repo": self._string(arguments, "repo")} if tool == "git_diff" else {}),
         }
-        if tool == "relayme_read_logs":
+        if tool == "read_logs":
             task_args: dict[str, Any] = {"service": self._string(arguments, "service")}
             for name in ("last_n", "since", "max_bytes"):
                 if name in arguments and arguments[name] is not None:
@@ -141,33 +145,36 @@ def create_mcp_server(adapter: RelayMeMcpAdapter):
         try:
             return adapter.invoke(name, arguments)
         except ControllerError as exc:
-            return {"error": {"status": exc.status, "message": exc.message}}
+            error = {"status": exc.status}
+            if isinstance(exc.message, dict):
+                error.update(exc.message)
+            else:
+                error["message"] = exc.message
+            return {"error": error}
         except ValueError as exc:
             return {"error": {"status": 400, "message": str(exc)}}
 
-    @server.tool(name="relayme_list_hosts", description=TOOL_SCHEMAS["relayme_list_hosts"]["description"])
-    def relayme_list_hosts() -> dict[str, Any]:
-        return invoke("relayme_list_hosts", {})
+    @server.tool(name="list_hosts", description=TOOL_SCHEMAS["list_hosts"]["description"])
+    def list_hosts() -> dict[str, Any]: return invoke("list_hosts", {})
 
-    @server.tool(name="relayme_host_status", description=TOOL_SCHEMAS["relayme_host_status"]["description"])
-    def relayme_host_status(host: str) -> dict[str, Any]:
-        return invoke("relayme_host_status", {"host": host})
+    @server.tool(name="list_host_resources", description=TOOL_SCHEMAS["list_host_resources"]["description"])
+    def list_host_resources(host: str) -> dict[str, Any]: return invoke("list_host_resources", {"host": host})
 
-    @server.tool(name="relayme_process_list", description=TOOL_SCHEMAS["relayme_process_list"]["description"])
-    def relayme_process_list(host: str) -> dict[str, Any]:
-        return invoke("relayme_process_list", {"host": host})
+    @server.tool(name="host_status", description=TOOL_SCHEMAS["host_status"]["description"])
+    def host_status(host: str) -> dict[str, Any]: return invoke("host_status", {"host": host})
 
-    @server.tool(name="relayme_read_logs", description=TOOL_SCHEMAS["relayme_read_logs"]["description"])
-    def relayme_read_logs(host: str, service: str, last_n: int | None = None, since: str | None = None, max_bytes: int | None = None) -> dict[str, Any]:
-        return invoke("relayme_read_logs", {"host": host, "service": service, "last_n": last_n, "since": since, "max_bytes": max_bytes})
+    @server.tool(name="process_list", description=TOOL_SCHEMAS["process_list"]["description"])
+    def process_list(host: str) -> dict[str, Any]: return invoke("process_list", {"host": host})
 
-    @server.tool(name="relayme_read_file", description=TOOL_SCHEMAS["relayme_read_file"]["description"])
-    def relayme_read_file(host: str, path: str) -> dict[str, Any]:
-        return invoke("relayme_read_file", {"host": host, "path": path})
+    @server.tool(name="read_logs", description=TOOL_SCHEMAS["read_logs"]["description"])
+    def read_logs(host: str, service: str, last_n: int | None = None, since: str | None = None, max_bytes: int | None = None) -> dict[str, Any]:
+        return invoke("read_logs", {"host": host, "service": service, "last_n": last_n, "since": since, "max_bytes": max_bytes})
 
-    @server.tool(name="relayme_git_diff", description=TOOL_SCHEMAS["relayme_git_diff"]["description"])
-    def relayme_git_diff(host: str, repo: str) -> dict[str, Any]:
-        return invoke("relayme_git_diff", {"host": host, "repo": repo})
+    @server.tool(name="read_file", description=TOOL_SCHEMAS["read_file"]["description"])
+    def read_file(host: str, path: str) -> dict[str, Any]: return invoke("read_file", {"host": host, "path": path})
+
+    @server.tool(name="git_diff", description=TOOL_SCHEMAS["git_diff"]["description"])
+    def git_diff(host: str, repo: str) -> dict[str, Any]: return invoke("git_diff", {"host": host, "repo": repo})
 
     return server
 

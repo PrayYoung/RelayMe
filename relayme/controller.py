@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-CAPABILITIES = frozenset({"list_hosts", "host_status", "process_list", "read_logs", "read_file", "git_diff"})
+CAPABILITIES = frozenset({"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff"})
 TERMINAL = frozenset({"SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED"})
 
 
@@ -124,7 +124,23 @@ class Store:
             rows = self.db.execute("SELECT host_id, hostname, registered_at, last_heartbeat, status, metadata FROM agents ORDER BY hostname").fetchall()
         cutoff = now() - 90
         return [{**dict(r), "status": "ONLINE" if r["last_heartbeat"] and r["last_heartbeat"] >= cutoff else "OFFLINE",
-                 "metadata": json.loads(r["metadata"])} for r in rows if permitted_hosts is None or "*" in permitted_hosts or r["host_id"] in permitted_hosts]
+                 "metadata": {key: value for key, value in json.loads(r["metadata"]).items() if key != "resources"}}
+                for r in rows if permitted_hosts is None or "*" in permitted_hosts or r["host_id"] in permitted_hosts]
+
+    def resolve_host(self, identifier: str) -> tuple[dict[str, Any] | None, str | None]:
+        with self.lock:
+            row = self.db.execute("SELECT host_id, hostname, metadata FROM agents WHERE host_id=?", (identifier,)).fetchone()
+            if row: return dict(row), None
+            rows = self.db.execute("SELECT host_id, hostname, metadata FROM agents WHERE hostname=?", (identifier,)).fetchall()
+        if not rows: return None, "unknown_host"
+        if len(rows) > 1: return None, "ambiguous_hostname"
+        return dict(rows[0]), None
+
+    def resources(self, host: dict[str, Any]) -> dict[str, Any]:
+        resources = json.loads(host["metadata"]).get("resources", {})
+        return {"host_id": host["host_id"], "hostname": host["hostname"],
+                "services": list(resources.get("services", [])), "repositories": list(resources.get("repositories", [])),
+                "allowed_file_roots": list(resources.get("allowed_file_roots", []))}
 
     def create_task(self, actor: str, host: str, capability: str, arguments: dict[str, Any]) -> str:
         task_id = str(uuid.uuid4())
@@ -153,16 +169,17 @@ class Store:
                     return None
                 self.changed.wait(remaining)
 
-    def finish_task(self, host_id: str, task_id: str, status: str, result: Any | None, error: str | None) -> bool:
+    def finish_task(self, host_id: str, task_id: str, status: str, result: Any | None, error: Any | None) -> bool:
         if status not in {"SUCCEEDED", "FAILED"}:
             return False
         raw = json.dumps(result, separators=(",", ":")).encode() if result is not None else b""
         if len(raw) > 1_000_000:
             status, result, raw, error = "FAILED", None, b"", "result exceeds Controller forwarding limit"
+        error_value = json.dumps(error, separators=(",", ":")) if isinstance(error, dict) else error
         with self.lock:
             changed = self.db.execute("UPDATE tasks SET status=?, finished_at=?, result_bytes=?, result_hash=?, error=? "
                                      "WHERE task_id=? AND host_id=? AND status='RUNNING'",
-                                     (status, now(), len(raw), hashlib.sha256(raw).hexdigest() if raw else None, error, task_id, host_id)).rowcount
+                                     (status, now(), len(raw), hashlib.sha256(raw).hexdigest() if raw else None, error_value, task_id, host_id)).rowcount
             self.db.commit()
             if changed and result is not None:
                 self.results[task_id] = result
@@ -178,6 +195,11 @@ class Store:
                 self.db.execute("UPDATE tasks SET status='TIMED_OUT', finished_at=? WHERE task_id=?", (now(), task_id)); self.db.commit()
                 result["status"], result["finished_at"] = "TIMED_OUT", now()
             result["arguments"] = json.loads(result["arguments"])
+            if result["error"]:
+                try:
+                    structured = json.loads(result["error"])
+                    if isinstance(structured, dict): result["error"] = structured
+                except json.JSONDecodeError: pass
             # Result observations are a short-lived forwarding channel, not persisted raw payloads.
             if result["status"] in TERMINAL and task_id in self.results:
                 result["result"] = self.results.pop(task_id)
@@ -197,7 +219,8 @@ class Api(BaseHTTPRequestHandler):
     def reply(self, status: int, value: Any) -> None:
         data = json.dumps(value, separators=(",", ":")).encode(); self.send_response(status)
         self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
-    def fail(self, status: int, message: str) -> None: self.reply(status, {"error": message}); raise RuntimeError(message)
+    def fail(self, status: int, message: str, code: str | None = None) -> None:
+        self.reply(status, {"error": {"code": code, "message": message} if code else message}); raise RuntimeError(message)
     def bearer(self) -> str:
         value = self.headers.get("Authorization", "")
         if not value.startswith("Bearer "): self.fail(HTTPStatus.UNAUTHORIZED, "missing bearer token")
@@ -234,9 +257,14 @@ class Api(BaseHTTPRequestHandler):
                 self.reply(200, {"ok": True}); return
             if path == "/v1/tasks":
                 actor, scopes = self.client(); host, cap, args = body.get("host"), body.get("capability"), body.get("arguments", {})
-                if not isinstance(host, str) or cap not in CAPABILITIES - {"list_hosts"} or not isinstance(args, dict): self.fail(400, "invalid task")
-                if not self.allowed(scopes, host, cap): self.fail(403, "scope does not permit task")
-                self.reply(201, {"task_id": self.server.store.create_task(actor, host, cap, args), "status": "QUEUED"}); return
+                if not isinstance(host, str) or cap not in CAPABILITIES - {"list_hosts", "list_host_resources"} or not isinstance(args, dict): self.fail(400, "invalid task")
+                resolved, error = self.server.store.resolve_host(host)
+                if error == "unknown_host": self.fail(404, "host identifier is unknown", error)
+                if error == "ambiguous_hostname": self.fail(409, "hostname is ambiguous; use host_id", error)
+                assert resolved
+                host_id = resolved["host_id"]
+                if not self.allowed(scopes, host_id, cap): self.fail(403, "scope does not permit task")
+                self.reply(201, {"task_id": self.server.store.create_task(actor, host_id, cap, args), "status": "QUEUED"}); return
             self.fail(404, "not found")
         except RuntimeError: pass
     def do_GET(self) -> None:
@@ -249,6 +277,15 @@ class Api(BaseHTTPRequestHandler):
             if path == "/v1/hosts":
                 if not scopes.get("admin") and "list_hosts" not in scopes.get("capabilities", []): self.fail(403, "scope does not permit list_hosts")
                 self.reply(200, {"hosts": self.server.store.hosts(None if scopes.get("admin") else scopes.get("hosts", []))}); return
+            if path.startswith("/v1/hosts/") and path.endswith("/resources"):
+                if not scopes.get("admin") and "list_host_resources" not in scopes.get("capabilities", []): self.fail(403, "scope does not permit list_host_resources")
+                identifier = path.removeprefix("/v1/hosts/").removesuffix("/resources").strip("/")
+                resolved, error = self.server.store.resolve_host(identifier)
+                if error == "unknown_host": self.fail(404, "host identifier is unknown", error)
+                if error == "ambiguous_hostname": self.fail(409, "hostname is ambiguous; use host_id", error)
+                assert resolved
+                if not self.allowed(scopes, resolved["host_id"], "list_host_resources"): self.fail(403, "scope does not permit host resources")
+                self.reply(200, {"resources": self.server.store.resources(resolved)}); return
             if path.startswith("/v1/tasks/"):
                 task = self.server.store.task(path.rsplit("/", 1)[1])
                 if not task: self.fail(404, "task not found")

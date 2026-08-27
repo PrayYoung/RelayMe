@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed and the demo is reset healthy. The optional generic MCP adapter, local-only client provisioning workflow, Controller restart validation, and OpenCode MCP smoke test are complete.
+v0.1 release cleanup complete; the synthetic demo is reset healthy. The generic MCP adapter and the agent-facing discovery/identifier improvements are validated.
 
 ## Completed
 
@@ -39,11 +39,15 @@ v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed an
 - Validated a controlled host reboot: Tailscale returned, the Controller resumed its private listener, the Agent reconnected using its existing credential, and an external scoped `list_hosts` call reported the host online without manual RelayMe startup.
 - Validated the isolated synthetic demo fixture after host recovery: its static one-shot unit runs successfully with healthy configuration, reliably fails with the documented broken configuration, and is observable through RelayMe logs, file reads, and Git diffs. Its private reset mechanics no longer rely on an inapplicable `reset-failed` step.
 - Completed one restricted OpenCode blind-diagnosis run using only the RelayMe MCP namespace. It did not identify the incident root cause because the six R0 tools do not provide registered-resource discovery and the client used non-registered labels; evaluation was FAIL. No bypass tool was attempted, and the fixture was restored healthy.
+- Added the read-only `list_host_resources` capability, exposing only already-registered services, repositories, and allowed file roots for a host.
+- Added prompt hostname resolution for host-scoped operations while retaining canonical host IDs; unknown and ambiguous identifiers now return structured errors instead of waiting for task expiry.
+- Standardized generic MCP server tool names so client namespace prefixes yield clean `relayme_*` names.
+- Revalidated the isolated blind diagnosis with the same restricted OpenCode model: it discovered registered resources through RelayMe, identified the configuration reference to the absent input file, and used no bypass access. Evaluation against the private ground truth: PASS. The fixture was restored healthy.
 
 ## Current work
 
-- v0.1 external access, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, reboot recovery, and OpenCode MCP smoke testing are validated. One restricted OpenCode blind run exposed a resource-discovery/identifier UX gap; the isolated synthetic fixture is healthy. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
+- v0.1 external access, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, reboot recovery, and OpenCode MCP testing are validated. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Decide whether a future-scope, read-only registered-resource discovery interface is acceptable before repeating the OpenCode blind diagnosis.
+- Review and release the validated read-only discovery enhancement.

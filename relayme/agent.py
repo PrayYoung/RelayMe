@@ -25,7 +25,9 @@ INITIAL_RETRY_SECONDS = 1
 MAX_RETRY_SECONDS = 30
 
 
-class PolicyError(Exception): pass
+class PolicyError(Exception):
+    def __init__(self, message: str, code: str = "policy_rejected"):
+        super().__init__(message); self.code = code
 class ControllerUnavailable(Exception): pass
 
 
@@ -47,7 +49,7 @@ class AgentPolicy:
         if not isinstance(requested, str): raise PolicyError("path is required")
         try: path = Path(requested).resolve(strict=True)
         except (OSError, RuntimeError): raise PolicyError("path does not exist or cannot be resolved")
-        if not any(path.is_relative_to(root) for root in self.roots): raise PolicyError("path is outside allowed roots")
+        if not any(path.is_relative_to(root) for root in self.roots): raise PolicyError("path is outside allowed roots", "file_outside_allowed_roots")
         mode = path.stat().st_mode
         if not stat.S_ISREG(mode): raise PolicyError("path is not a regular file")
         size = path.stat().st_size
@@ -56,7 +58,7 @@ class AgentPolicy:
 
     def read_logs(self, arguments: dict[str, Any]) -> dict[str, Any]:
         service = arguments.get("service")
-        if service not in self.services: raise PolicyError("service is not registered")
+        if service not in self.services: raise PolicyError("service is not registered", "unregistered_service")
         max_bytes = min(int(arguments.get("max_bytes", self.max_logs)), self.max_logs)
         if max_bytes < 1: raise PolicyError("max_bytes must be positive")
         last_n, since = arguments.get("last_n"), arguments.get("since")
@@ -74,7 +76,7 @@ class AgentPolicy:
 
     def git_diff(self, arguments: dict[str, Any]) -> dict[str, Any]:
         repo = arguments.get("repo")
-        if repo not in self.repos: raise PolicyError("repository is not registered")
+        if repo not in self.repos: raise PolicyError("repository is not registered", "unregistered_repository")
         try:
             run = subprocess.run(["git", "-C", str(self.repos[repo]), "diff", "--no-ext-diff", "--no-color"],
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=30)
@@ -116,13 +118,17 @@ class AgentPolicy:
         return {"processes": items, "truncated": len(output.splitlines()) > 4096}
 
     def execute(self, capability: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        if capability not in CAPABILITIES - {"list_hosts"}: raise PolicyError("capability is not authorized for agents")
+        if capability not in CAPABILITIES - {"list_hosts", "list_host_resources"}: raise PolicyError("capability is not authorized for agents")
         if capability == "host_status": return self.host_status()
         if capability == "process_list": return self.process_list()
         if capability == "read_file": return self.read_file(arguments)
         if capability == "read_logs": return self.read_logs(arguments)
         if capability == "git_diff": return self.git_diff(arguments)
         raise PolicyError("unsupported capability")
+
+    def resources(self) -> dict[str, Any]:
+        return {"services": sorted(self.services), "repositories": sorted(self.repos),
+                "allowed_file_roots": [str(root) for root in self.roots]}
 
 
 def request(url: str, method: str, body: dict[str, Any] | None = None, headers: dict[str, str] | None = None, ca_cert: str | None = None) -> dict[str, Any]:
@@ -159,7 +165,7 @@ def run(config: dict[str, Any]) -> None:
                 request(url + "/v1/agent/tasks/result", "POST", pending_result, headers, ca_cert)
                 pending_result = None
             if time.monotonic() - last_heartbeat >= 30:
-                request(url + "/v1/agent/heartbeat", "POST", {"metadata": {"agent_version": __version__}}, headers, ca_cert); last_heartbeat = time.monotonic()
+                request(url + "/v1/agent/heartbeat", "POST", {"metadata": {"agent_version": __version__, "resources": policy.resources()}}, headers, ca_cert); last_heartbeat = time.monotonic()
             payload = request(url + "/v1/agent/tasks/next?wait_seconds=20", "GET", headers=headers, ca_cert=ca_cert)
             retry_seconds = INITIAL_RETRY_SECONDS
         except ControllerUnavailable:
@@ -169,6 +175,7 @@ def run(config: dict[str, Any]) -> None:
         task = payload.get("task")
         if not task: continue
         try: result, status, error = policy.execute(task["capability"], task["arguments"]), "SUCCEEDED", None
+        except PolicyError as exc: result, status, error = None, "FAILED", {"code": exc.code, "message": str(exc)[:4096]}
         except Exception as exc: result, status, error = None, "FAILED", str(exc)[:4096]
         pending_result = {"task_id": task["task_id"], "status": status, "result": result, "error": error}
 
