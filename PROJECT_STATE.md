@@ -34,10 +34,13 @@ v0.1 release cleanup complete; synthetic end-to-end acceptance remains passed an
 - Created and externally authenticated a dedicated `opencode` client scoped to exactly the six read-only R0 capabilities; its local configuration and public Controller CA remain outside Git.
 - Restarted the deployment Controller through its protected local workflow; verified the scoped client still authenticates, the legacy remote client-token route returns `404`, and the listener remains private-interface-only.
 - Configured OpenCode to launch the generic MCP adapter from protected local client configuration; validated all six R0 tools against the enrolled demo host and confirmed an outside-root `read_file` rejection through MCP, with no non-RelayMe tool call recorded.
+- Added Controller support for a protected local bootstrap-token file, avoiding bootstrap-secret command-line exposure in service managers.
+- Installed local-only systemd units for the Controller and Host Agent with network/Tailscale ordering and bounded restart-on-failure behavior; no unit or deployment configuration is tracked in Git.
+- Validated a controlled host reboot: Tailscale returned, the Controller resumed its private listener, the Agent reconnected using its existing credential, and an external scoped `list_hosts` call reported the host online without manual RelayMe startup.
 
 ## Current work
 
-- v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, hardened Controller deployment, and OpenCode MCP smoke testing are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
+- v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, reboot recovery, and OpenCode MCP smoke testing are validated. Runtime secrets, host configuration, Tailnet details, and fixture ground truth remain outside Git.
 
 ## Next action
 

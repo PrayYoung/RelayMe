@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "status": "opencode_mcp_smoke_validated",
+  "status": "reboot_recovery_validated",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -39,8 +39,11 @@
     "Added local-only scoped client-token creation and revocation with hashed-token audit metadata and no remote client-token creation endpoint",
     "Created and externally authenticated a dedicated opencode client scoped to exactly the six read-only R0 capabilities; its local configuration and public Controller CA remain outside Git",
     "Restarted the deployment Controller through its protected local workflow; verified scoped authentication, a 404 response for the legacy remote client-token route, and private-interface-only listener binding",
-    "Configured OpenCode to launch the generic MCP adapter from protected local client configuration; validated all six R0 tools against the enrolled demo host and an outside-root read_file rejection through MCP, with no non-RelayMe tool call recorded"
+    "Configured OpenCode to launch the generic MCP adapter from protected local client configuration; validated all six R0 tools against the enrolled demo host and an outside-root read_file rejection through MCP, with no non-RelayMe tool call recorded",
+    "Added Controller support for protected local bootstrap-token files to avoid bootstrap-secret command-line exposure",
+    "Installed local-only systemd units for Controller and Agent with Tailscale/network ordering and bounded restart-on-failure behavior",
+    "Validated controlled host reboot recovery: private Controller listener, existing Agent credential reconnection, and external scoped list_hosts without manual RelayMe startup"
   ],
-  "current_work": "v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, hardened Controller deployment, and OpenCode MCP smoke testing are validated; deployment details and private ground truth remain outside Git",
+  "current_work": "v0.1 external access, synthetic acceptance, public-release cleanup, generic read-only MCP adapter, local-only client provisioning, reboot recovery, and OpenCode MCP smoke testing are validated; deployment details and private ground truth remain outside Git",
   "next_action": "Reset the isolated synthetic incident to its documented broken state, then run the OpenCode blind diagnosis without exposing ground truth"
 }

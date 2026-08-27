@@ -263,11 +263,22 @@ class ControllerServer(ThreadingHTTPServer):
         super().__init__(address, Api); self.store, self.bootstrap_token = store, bootstrap_token
 
 
+def load_bootstrap_token(token: str | None, token_file: str | None) -> str:
+    if bool(token) == bool(token_file):
+        raise ValueError("supply exactly one bootstrap token source")
+    value = Path(token_file).read_text().strip() if token_file else token
+    if not value:
+        raise ValueError("bootstrap token must not be empty")
+    return value
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(); parser.add_argument("--db", default="relayme.db"); parser.add_argument("--bind", default="127.0.0.1:8765"); parser.add_argument("--bootstrap-token", required=True); parser.add_argument("--tls-cert"); parser.add_argument("--tls-key")
+    parser = argparse.ArgumentParser(); parser.add_argument("--db", default="relayme.db"); parser.add_argument("--bind", default="127.0.0.1:8765"); parser.add_argument("--bootstrap-token"); parser.add_argument("--bootstrap-token-file"); parser.add_argument("--tls-cert"); parser.add_argument("--tls-key")
     args = parser.parse_args(); host, port = args.bind.rsplit(":", 1)
     if bool(args.tls_cert) != bool(args.tls_key): parser.error("--tls-cert and --tls-key must be supplied together")
-    server = ControllerServer((host, int(port)), Store(args.db), args.bootstrap_token)
+    try: bootstrap_token = load_bootstrap_token(args.bootstrap_token, args.bootstrap_token_file)
+    except (OSError, ValueError) as error: parser.error(str(error))
+    server = ControllerServer((host, int(port)), Store(args.db), bootstrap_token)
     if args.tls_cert:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); context.load_cert_chain(args.tls_cert, args.tls_key)
         server.socket = context.wrap_socket(server.socket, server_side=True)

@@ -10,7 +10,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from relayme.agent import AgentPolicy, ControllerUnavailable, PolicyError, run
-from relayme import admin, cli
+from relayme import admin, cli, controller
 from relayme.controller import ControllerServer, Store
 
 
@@ -168,6 +168,18 @@ class LocalAdminTests(unittest.TestCase):
             self.assertEqual(events, ["CREATED", "REVOKED"])
         finally:
             store.db.close()
+
+
+class ControllerBootstrapTokenTests(unittest.TestCase):
+    def test_loads_bootstrap_token_from_protected_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            token_file = Path(directory) / "bootstrap.token"
+            token_file.write_text("local-only-token\n")
+            self.assertEqual(controller.load_bootstrap_token(None, str(token_file)), "local-only-token")
+
+    def test_requires_exactly_one_bootstrap_token_source(self):
+        with self.assertRaises(ValueError): controller.load_bootstrap_token(None, None)
+        with self.assertRaises(ValueError): controller.load_bootstrap_token("inline", "protected-file")
 
 
 class ExternalCliTests(unittest.TestCase):
