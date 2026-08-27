@@ -44,12 +44,12 @@ v0.2 release candidate metadata is prepared; the synthetic demo is reset healthy
 - Standardized generic MCP server tool names so client namespace prefixes yield clean `relayme_*` names.
 - Revalidated the isolated blind diagnosis with the same restricted OpenCode model: it discovered registered resources through RelayMe, identified the configuration reference to the absent input file, and used no bypass access. Evaluation against the private ground truth: PASS. The fixture was restored healthy.
 - Rewrote repository commit identity metadata to the public-safe project identity, recreated the historical v0.1.0 tag at its rewritten commit, and pruned pre-rewrite objects.
-- Began an Antigravity second-client interoperability validation using its documented local MCP configuration and a RelayMe-only permission policy. The installed local agent API requires an app-issued authenticated session and no standalone launcher was available; no RelayMe MCP call was made and the synthetic fixture was untouched.
+- Validated the generic MCP adapter with standalone Antigravity CLI using a local RelayMe-only policy. It discovered all seven R0 tools, completed the MCP smoke test (including an Agent-side outside-root rejection), and passed the blind synthetic-incident diagnosis against the private ground truth. The fixture was restored healthy. No RelayMe code changed.
 
 ## Current work
 
-- v0.2.0 is tagged and its implementation remains unchanged. Antigravity second-client validation is pending a supported authenticated CLI session. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
+- v0.2.0 is tagged and its implementation remains unchanged. Standalone Antigravity CLI now independently validates the vendor-neutral MCP adapter. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Run the Antigravity MCP validation from its supported authenticated CLI session.
+- Review the completed second-client validation before deciding whether to publish the tagged v0.2.0 release.

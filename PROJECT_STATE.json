@@ -1,6 +1,6 @@
 {
   "version": "0.2",
-  "status": "agent_facing_discovery_revalidation_passed",
+  "status": "antigravity_mcp_blind_diagnosis_passed",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -50,8 +50,8 @@
     "Standardized generic MCP server tool names so client namespace prefixes produce clean relayme_* names",
     "Repeated the restricted OpenCode blind diagnosis with the same model: it discovered registered resources through RelayMe, identified the configured absent input file, used no bypass access, and evaluated PASS against private ground truth; fixture restored healthy",
     "Rewrote repository commit identity metadata to the public-safe project identity, recreated the historical v0.1.0 tag at its rewritten commit, and pruned pre-rewrite objects",
-    "Began an Antigravity second-client interoperability validation using its documented local MCP configuration and a RelayMe-only permission policy; its installed local agent API requires an app-issued authenticated session, so no RelayMe MCP call was made and the synthetic fixture was untouched"
+    "Validated the generic MCP adapter with standalone Antigravity CLI using a local RelayMe-only policy: all seven R0 tools were discovered, the smoke test and Agent-side outside-root rejection passed, the blind synthetic-incident diagnosis evaluated PASS against private ground truth, no bypass access completed, and the fixture was restored healthy without RelayMe code changes"
   ],
-  "current_work": "v0.2.0 is tagged and its implementation remains unchanged; Antigravity second-client validation is pending a supported authenticated CLI session; read-only resource discovery and agent-friendly host identifiers close the identified UX gap; the isolated synthetic fixture is healthy; deployment details and private ground truth remain outside Git",
-  "next_action": "Run the Antigravity MCP validation from its supported authenticated CLI session"
+  "current_work": "v0.2.0 is tagged and its implementation remains unchanged; standalone Antigravity CLI independently validated the generic MCP adapter; read-only resource discovery and agent-friendly host identifiers close the identified UX gap; the isolated synthetic fixture is healthy; deployment details and private ground truth remain outside Git",
+  "next_action": "Review the completed second-client validation before deciding whether to publish the tagged v0.2.0 release"
 }
