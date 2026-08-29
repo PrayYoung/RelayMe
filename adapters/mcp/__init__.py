@@ -1,1 +1,1 @@
-"""MCP adapter for RelayMe's read-only v0.2 capabilities."""
+"""Vendor-neutral MCP adapter for RelayMe v0.3 R0 and bounded R1 capabilities."""

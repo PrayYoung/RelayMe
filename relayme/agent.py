@@ -1,4 +1,4 @@
-"""Outbound-polling Host Agent with the v0.2 local read-only policy."""
+"""Outbound-polling Host Agent with v0.3 R0 policy and bounded registered R1 tasks."""
 from __future__ import annotations
 
 import argparse

@@ -1,4 +1,4 @@
-"""Small JSON CLI client for RelayMe v0.2."""
+"""Small JSON CLI client for RelayMe v0.3 R0 observation and bounded R1 tasks."""
 from __future__ import annotations
 
 import argparse

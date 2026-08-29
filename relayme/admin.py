@@ -1,4 +1,4 @@
-"""Local-only Controller administration for RelayMe v0.2."""
+"""Local-only Controller administration for RelayMe v0.3 scoped clients."""
 from __future__ import annotations
 
 import argparse

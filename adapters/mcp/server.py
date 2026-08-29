@@ -1,4 +1,4 @@
-"""Standard stdio MCP adapter for RelayMe v0.2.
+"""Standard stdio MCP adapter for RelayMe v0.3.
 
 This module translates MCP tool calls into the existing RelayMe Controller HTTP/JSON
 API. It never contacts managed hosts directly and leaves all authorization and host
@@ -146,7 +146,7 @@ def create_mcp_server(adapter: RelayMeMcpAdapter):
     """Create an MCP server lazily so translation logic remains directly testable."""
     try: from mcp.server.fastmcp import FastMCP
     except ImportError as exc: raise ConfigurationError("MCP SDK is required; install RelayMe with its MCP dependency") from exc
-    server = FastMCP("RelayMe", instructions="Read-only RelayMe v0.2 diagnostics. Use only the seven RelayMe tools.", json_response=True)
+    server = FastMCP("RelayMe", instructions="RelayMe v0.3 exposes seven read-only R0 observation/discovery tools and one bounded R1 registered-task tool. R1 runs only locally registered fixed tasks; it provides no arbitrary shell or mutation access.", json_response=True)
 
     def invoke(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -191,7 +191,7 @@ def create_mcp_server(adapter: RelayMeMcpAdapter):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="RelayMe v0.2 MCP adapter")
+    parser = argparse.ArgumentParser(description="RelayMe v0.3 MCP adapter for R0 observation and bounded R1 tasks")
     parser.add_argument("--transport", choices=("stdio",), default="stdio", help="MCP transport (stdio is suitable for local clients and tunnel launchers)")
     args = parser.parse_args()
     server = create_mcp_server(RelayMeMcpAdapter(ControllerClient(AdapterConfig.from_env())))

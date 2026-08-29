@@ -1,4 +1,4 @@
-"""Single-process HTTP/JSON Controller for RelayMe v0.2."""
+"""Single-process HTTP/JSON Controller for RelayMe v0.3 R0 and bounded R1."""
 from __future__ import annotations
 
 import argparse
