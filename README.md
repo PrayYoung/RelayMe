@@ -6,6 +6,8 @@ It implements seven read-only R0 capabilities: `list_hosts`, `list_host_resource
 
 R1 is not shell access. The client selects only a host, a locally registered task ID, and an optional opaque idempotency key. The Agent fixes the executable, argv, working directory, minimal environment, timeout, output limits, and execution identity; tasks never use a shell and must not run as root.
 
+For an idempotency key, RelayMe atomically reuses the original execution. Its bounded result remains replayable for a short retention period; after expiry RelayMe returns stable execution metadata with a `result_expired` state and never runs the task again.
+
 ## Local demo
 
 Create an agent config from [`examples/agent.example.json`](examples/agent.example.json), then start both processes. For remote deployments, supply `--tls-cert` and `--tls-key` to the Controller and use its `https://` URL in the agent configuration:

@@ -24,6 +24,9 @@ from .controller import CAPABILITIES
 MAX_FILE_BYTES = 1_000_000
 MAX_LOG_BYTES = 1_000_000
 MAX_DIFF_BYTES = 1_000_000
+# Two streams capped at 64 KiB each remain safely below the Controller's 1 MiB
+# serialized-result limit even when invalid UTF-8 expands during JSON encoding.
+MAX_EXECUTION_STREAM_BYTES = 64 * 1024
 INITIAL_RETRY_SECONDS = 1
 MAX_RETRY_SECONDS = 30
 
@@ -53,6 +56,7 @@ class AgentPolicy:
         self.execution_retention_seconds = int(config.get("execution_result_retention_seconds", 3600))
         if not 60 <= self.execution_retention_seconds <= 86400: raise ValueError("invalid execution result retention")
         self._execution_expiry: dict[str, int] = {}
+        self._pending_delivery: dict[str, dict[str, Any]] = {}
         self._completed_executions: dict[str, dict[str, Any]] = self._load_execution_state() if self.tasks else {}
 
     def _load_execution_state(self) -> dict[str, dict[str, Any]]:
@@ -62,6 +66,7 @@ class AgentPolicy:
         current = time.time()
         completed = {key: value["result"] for key, value in raw.items() if isinstance(key, str) and isinstance(value, dict) and value.get("expires_at", 0) > current and isinstance(value.get("result"), dict)}
         self._execution_expiry = {key: int(value["expires_at"]) for key, value in raw.items() if key in completed}
+        self._pending_delivery = {key: completed[key] for key, value in raw.items() if key in completed and not value.get("delivered", False)}
         self._persist_execution_state(completed)
         return completed
 
@@ -69,8 +74,9 @@ class AgentPolicy:
         if not self.tasks: return
         current = int(time.time())
         expired = [key for key in completed if self._execution_expiry.get(key, 0) <= current]
-        for key in expired: completed.pop(key, None); self._execution_expiry.pop(key, None)
-        payload = {key: {"expires_at": self._execution_expiry.get(key, current + self.execution_retention_seconds), "result": value} for key, value in completed.items()}
+        for key in expired:
+            completed.pop(key, None); self._execution_expiry.pop(key, None); self._pending_delivery.pop(key, None)
+        payload = {key: {"expires_at": self._execution_expiry.get(key, current + self.execution_retention_seconds), "result": value, "delivered": key not in self._pending_delivery} for key, value in completed.items()}
         temporary = self.execution_state_file.with_suffix(self.execution_state_file.suffix + ".tmp")
         temporary.write_text(json.dumps(payload, separators=(",", ":")))
         os.chmod(temporary, 0o600); temporary.replace(self.execution_state_file)
@@ -90,7 +96,7 @@ class AgentPolicy:
             if not any(canonical_cwd.is_relative_to(root) for root in self.roots): raise ValueError("registered task working directory is outside allowed roots")
             if not isinstance(value["description"], str) or not value["description"] or not isinstance(value["environment"], dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in value["environment"].items()): raise ValueError("invalid registered task metadata")
             if value["run_as"] != "agent" or value["idempotent"] is not True or value["max_concurrent"] != 1: raise ValueError("v0.3 tasks must be idempotent, single-concurrent, and run as agent")
-            for name, maximum, minimum in (("timeout_seconds", 3600, 1), ("max_stdout_bytes", MAX_FILE_BYTES, 1), ("max_stderr_bytes", MAX_FILE_BYTES, 1), ("cooldown_seconds", 86400, 0)):
+            for name, maximum, minimum in (("timeout_seconds", 3600, 1), ("max_stdout_bytes", MAX_EXECUTION_STREAM_BYTES, 1), ("max_stderr_bytes", MAX_EXECUTION_STREAM_BYTES, 1), ("cooldown_seconds", 86400, 0)):
                 if not isinstance(value[name], int) or not minimum <= value[name] <= maximum: raise ValueError("invalid registered task limit")
             normalized = {**value, "working_directory": str(canonical_cwd), "task_identity": hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()}
             tasks[task_id] = normalized
@@ -217,8 +223,21 @@ class AgentPolicy:
                       "stdout_truncated": output["stdout"]["truncated"], "stderr_truncated": output["stderr"]["truncated"], "stdout_hash": output["stdout"]["hash"], "stderr_hash": output["stderr"]["hash"]}
             self._completed_executions[execution_id] = result
             self._execution_expiry[execution_id] = int(time.time()) + self.execution_retention_seconds
+            self._pending_delivery[execution_id] = result
             self._persist_execution_state(self._completed_executions)
             return result
+
+    def pending_delivery_payloads(self) -> list[dict[str, Any]]:
+        current = int(time.time())
+        if any(expiry <= current for expiry in self._execution_expiry.values()):
+            self._persist_execution_state(self._completed_executions)
+        return [{"task_id": execution_id, "status": "SUCCEEDED" if result.get("state") == "succeeded" else "FAILED", "result": result, "error": None}
+                for execution_id, result in self._pending_delivery.items()]
+
+    def mark_delivery_confirmed(self, execution_id: str) -> None:
+        if execution_id in self._pending_delivery:
+            del self._pending_delivery[execution_id]
+            self._persist_execution_state(self._completed_executions)
 
     def execute(self, capability: str, arguments: dict[str, Any], execution_id: str | None = None) -> dict[str, Any]:
         if capability not in CAPABILITIES - {"list_hosts", "list_host_resources"}: raise PolicyError("capability is not authorized for agents")
@@ -264,11 +283,18 @@ def run(config: dict[str, Any]) -> None:
     last_heartbeat = 0.0
     retry_seconds = INITIAL_RETRY_SECONDS
     pending_result: dict[str, Any] | None = None
+    pending_r1 = policy.pending_delivery_payloads()
     while True:
         try:
+            pending_r1 = policy.pending_delivery_payloads()
             if pending_result:
                 request(url + "/v1/agent/tasks/result", "POST", pending_result, headers, ca_cert)
                 pending_result = None
+            if pending_r1:
+                delivery = pending_r1[0]
+                request(url + "/v1/agent/tasks/result", "POST", delivery, headers, ca_cert)
+                policy.mark_delivery_confirmed(delivery["task_id"])
+                pending_r1 = policy.pending_delivery_payloads()
             if time.monotonic() - last_heartbeat >= 30:
                 request(url + "/v1/agent/heartbeat", "POST", {"metadata": {"agent_version": __version__, "resources": policy.resources()}}, headers, ca_cert); last_heartbeat = time.monotonic()
             payload = request(url + "/v1/agent/tasks/next?wait_seconds=20", "GET", headers=headers, ca_cert=ca_cert)
@@ -291,7 +317,12 @@ def run(config: dict[str, Any]) -> None:
             else: result, status = None, "FAILED"
             error = {"code": exc.code, "message": str(exc)[:4096]}
         except Exception as exc: result, status, error = None, "FAILED", str(exc)[:4096]
-        pending_result = {"task_id": task["task_id"], "status": status, "result": result, "error": error}
+        if task["capability"] == "run_registered_task" and isinstance(result, dict) and result.get("execution_id") == task["task_id"] and error is None:
+            pending_r1 = policy.pending_delivery_payloads()
+            if not any(delivery["task_id"] == task["task_id"] for delivery in pending_r1):
+                pending_result = {"task_id": task["task_id"], "status": status, "result": result, "error": error}
+        else:
+            pending_result = {"task_id": task["task_id"], "status": status, "result": result, "error": error}
 
 
 def main() -> None:

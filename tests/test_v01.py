@@ -4,13 +4,14 @@ import tempfile
 import threading
 import unittest
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from relayme.agent import AgentPolicy, ControllerUnavailable, PolicyError, run
+from relayme.agent import AgentPolicy, ControllerUnavailable, MAX_EXECUTION_STREAM_BYTES, PolicyError, run
 from relayme import admin, cli, controller
 from relayme.controller import ControllerServer, Store
 
@@ -127,6 +128,35 @@ class RegisteredTaskPolicyTests(unittest.TestCase):
         bad = json.loads(json.dumps(self.config)); bad["registered_tasks"]["demo-health-check"]["idempotent"] = False
         with self.assertRaisesRegex(ValueError, "idempotent"): AgentPolicy(bad)
 
+    def test_completed_result_survives_restart_and_is_redelivered_without_rerun(self):
+        counter = self.root / "execution-count"
+        self.config["registered_tasks"]["demo-health-check"]["argv"] = [sys.executable, "-c", f"from pathlib import Path; p=Path({str(counter)!r}); p.write_text(str(int(p.read_text()) + 1) if p.exists() else '1')"]
+        first = AgentPolicy(self.config)
+        result = first.execute("run_registered_task", {"task_id": "demo-health-check"}, "execution-restart")
+        self.assertEqual(counter.read_text(), "1")
+        restarted = AgentPolicy(self.config)
+        self.assertEqual(len(restarted.pending_delivery_payloads()), 1)
+        self.assertEqual(restarted.execute("run_registered_task", {"task_id": "demo-health-check"}, "execution-restart"), result)
+        self.assertEqual(counter.read_text(), "1")
+        calls = [{"ok": True}, KeyboardInterrupt()]
+        config = {**self.config, "controller_url": "http://controller"}
+        with patch("relayme.agent.credentials", return_value={"host_id": "host", "credential": "existing"}), patch("relayme.agent.request", side_effect=calls) as request:
+            with self.assertRaises(KeyboardInterrupt): run(config)
+        self.assertTrue(request.call_args_list[0].args[0].endswith("/agent/tasks/result"))
+        self.assertEqual(AgentPolicy(self.config).pending_delivery_payloads(), [])
+        self.assertEqual(counter.read_text(), "1")
+
+    def test_execution_stream_caps_fit_controller_contract(self):
+        bad = json.loads(json.dumps(self.config)); bad["registered_tasks"]["demo-health-check"]["max_stdout_bytes"] = MAX_EXECUTION_STREAM_BYTES + 1
+        with self.assertRaisesRegex(ValueError, "limit"): AgentPolicy(bad)
+
+    def test_configured_maximum_output_is_accepted(self):
+        self.config["registered_tasks"]["demo-health-check"].update({"argv": [sys.executable, "-c", f"print('x' * {MAX_EXECUTION_STREAM_BYTES - 1})"], "max_stdout_bytes": MAX_EXECUTION_STREAM_BYTES})
+        result = AgentPolicy(self.config).execute("run_registered_task", {"task_id": "demo-health-check"}, "maximum-output")
+        self.assertEqual(result["state"], "succeeded")
+        self.assertFalse(result["stdout_truncated"])
+        self.assertEqual(result["stdout_bytes"], MAX_EXECUTION_STREAM_BYTES)
+
 
 class ControllerTests(unittest.TestCase):
     def setUp(self):
@@ -201,6 +231,60 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as rejected:
             self.call("POST", "/v1/tasks", {"host": agent["host_id"], "capability": "run_registered_task", "arguments": {"task_id": "demo-health-check", "argv": ["/bin/sh"]}}, token)
         self.assertEqual(rejected.exception.code, 400); rejected.exception.close()
+
+    def test_r1_concurrent_idempotency_is_atomic_and_database_backed(self):
+        agent = self.enroll()
+        barrier = threading.Barrier(8)
+        def create() -> str:
+            barrier.wait()
+            return self.store.create_task("runner", agent["host_id"], "run_registered_task", {"task_id": "demo-health-check", "idempotency_key": "same-key"})
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            task_ids = list(pool.map(lambda _: create(), range(8)))
+        self.assertEqual(len(set(task_ids)), 1)
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM tasks WHERE capability='run_registered_task'").fetchone()[0], 1)
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM r1_idempotency").fetchone()[0], 1)
+
+    def test_r1_replay_retains_result_and_duplicate_delivery_is_harmless(self):
+        agent = self.enroll()
+        task_id = self.store.create_task("runner", agent["host_id"], "run_registered_task", {"task_id": "demo-health-check", "idempotency_key": "replay-key"})
+        self.assertIsNotNone(self.store.next_task(agent["host_id"], 0))
+        result = {"execution_id": task_id, "task_id": "demo-health-check", "task_identity": "policy", "state": "succeeded", "exit_code": 0, "duration_ms": 1, "timeout_seconds": 2, "stdout": "ok", "stderr": "", "stdout_bytes": 2, "stderr_bytes": 0, "stdout_truncated": False, "stderr_truncated": False, "stdout_hash": "a", "stderr_hash": "b", "terminating_signal": None}
+        self.assertTrue(self.store.finish_task(agent["host_id"], task_id, "SUCCEEDED", result, None))
+        self.assertEqual(self.store.task(task_id)["result"], result)
+        self.assertEqual(self.store.task(task_id)["result"], result)
+        self.assertTrue(self.store.finish_task(agent["host_id"], task_id, "SUCCEEDED", result, None))
+        self.assertEqual(self.store.create_task("runner", agent["host_id"], "run_registered_task", {"task_id": "demo-health-check", "idempotency_key": "replay-key"}), task_id)
+
+    def test_expired_r1_result_returns_stable_expired_state(self):
+        agent = self.enroll()
+        task_id = self.store.create_task("runner", agent["host_id"], "run_registered_task", {"task_id": "demo-health-check"})
+        self.assertIsNotNone(self.store.next_task(agent["host_id"], 0))
+        result = {"execution_id": task_id, "task_id": "demo-health-check", "state": "succeeded", "stdout": "ok", "stderr": "", "stdout_bytes": 2, "stderr_bytes": 0, "stdout_truncated": False, "stderr_truncated": False}
+        self.assertTrue(self.store.finish_task(agent["host_id"], task_id, "SUCCEEDED", result, None))
+        self.store.db.execute("UPDATE r1_results SET expires_at=0 WHERE execution_id=?", (task_id,)); self.store.db.commit()
+        observed = self.store.task(task_id)
+        self.assertTrue(observed["result_expired"])
+        self.assertEqual(observed["result"]["state"], "result_expired")
+
+    def test_running_r1_task_is_not_redelivered_after_controller_restart(self):
+        agent = self.enroll()
+        task_id = self.store.create_task("runner", agent["host_id"], "run_registered_task", {"task_id": "demo-health-check"})
+        self.assertEqual(self.store.next_task(agent["host_id"], 0)["task_id"], task_id)
+        database = self.store.db.execute("PRAGMA database_list").fetchone()[2]
+        restarted = Store(database)
+        try: self.assertIsNone(restarted.next_task(agent["host_id"], 0))
+        finally: restarted.db.close()
+
+    def test_oversize_r1_result_is_audited_with_structured_result(self):
+        agent = self.enroll()
+        task_id = self.store.create_task("runner", agent["host_id"], "run_registered_task", {"task_id": "demo-health-check"})
+        self.assertIsNotNone(self.store.next_task(agent["host_id"], 0))
+        result = {"execution_id": task_id, "task_id": "demo-health-check", "state": "succeeded", "stdout": "x" * 1_000_000, "stderr": "", "stdout_bytes": 1_000_000, "stderr_bytes": 0, "stdout_truncated": False, "stderr_truncated": False}
+        self.assertTrue(self.store.finish_task(agent["host_id"], task_id, "SUCCEEDED", result, None))
+        observed = self.store.task(task_id)
+        self.assertEqual(observed["result"]["state"], "result_rejected_oversize")
+        self.assertEqual(observed["error"]["code"], "result_too_large")
+        self.assertIsNotNone(self.store.db.execute("SELECT execution_id FROM execution_audit WHERE execution_id=?", (task_id,)).fetchone())
 
     def test_remote_client_token_creation_is_not_exposed(self):
         with self.assertRaises(HTTPError) as client:

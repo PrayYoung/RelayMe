@@ -19,6 +19,8 @@ from urllib.parse import parse_qs, urlparse
 R1_CAPABILITY = "run_registered_task"
 CAPABILITIES = frozenset({"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff", R1_CAPABILITY})
 TERMINAL = frozenset({"SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED"})
+MAX_RESULT_BYTES = 1_000_000
+R1_RESULT_RETENTION_SECONDS = 3600
 
 
 def now() -> int:
@@ -54,11 +56,20 @@ class Store:
               finished_at INTEGER, duration_ms INTEGER, state TEXT, exit_code INTEGER, terminating_signal INTEGER,
               timeout_seconds INTEGER, stdout_bytes INTEGER, stderr_bytes INTEGER, stdout_truncated INTEGER, stderr_truncated INTEGER,
               stdout_hash TEXT, stderr_hash TEXT, rejection_code TEXT);
+            CREATE TABLE IF NOT EXISTS r1_idempotency (actor TEXT NOT NULL, host_id TEXT NOT NULL, registered_task_id TEXT NOT NULL,
+              key_hash TEXT NOT NULL, execution_id TEXT NOT NULL, created_at INTEGER NOT NULL,
+              PRIMARY KEY (actor, host_id, registered_task_id, key_hash));
+            CREATE TABLE IF NOT EXISTS r1_results (execution_id TEXT PRIMARY KEY, result TEXT, expires_at INTEGER NOT NULL,
+              expired_at INTEGER);
             """)
             columns = {row[1] for row in self.db.execute("PRAGMA table_info(tasks)")}
             if "idempotency_key" not in columns:
                 self.db.execute("ALTER TABLE tasks ADD COLUMN idempotency_key TEXT")
+            self.db.execute("UPDATE r1_results SET result=NULL, expired_at=? WHERE result IS NOT NULL AND expires_at < ?", (now(), now()))
             self.db.commit()
+
+    def _expire_r1_results(self) -> None:
+        self.db.execute("UPDATE r1_results SET result=NULL, expired_at=? WHERE result IS NOT NULL AND expires_at < ?", (now(), now()))
 
     def create_enrollment(self, ttl: int) -> str:
         token = secrets.token_urlsafe(32)
@@ -154,16 +165,23 @@ class Store:
                 "registered_tasks": list(resources.get("registered_tasks", []))}
 
     def create_task(self, actor: str, host: str, capability: str, arguments: dict[str, Any]) -> str:
-        idempotency_key = arguments.get("idempotency_key") if capability == R1_CAPABILITY else None
-        if idempotency_key:
-            with self.lock:
-                existing = self.db.execute("SELECT task_id FROM tasks WHERE actor=? AND host_id=? AND capability=? AND arguments=? AND idempotency_key=? ORDER BY created_at LIMIT 1",
-                                           (actor, host, capability, json.dumps(arguments, sort_keys=True), idempotency_key)).fetchone()
-                if existing: return existing["task_id"]
+        arguments = dict(arguments)
+        idempotency_key = arguments.pop("idempotency_key", None) if capability == R1_CAPABILITY else None
         task_id = str(uuid.uuid4())
         with self.changed:
+            self._expire_r1_results()
+            if idempotency_key:
+                key_hash = token_hash(idempotency_key)
+                inserted = self.db.execute("INSERT OR IGNORE INTO r1_idempotency VALUES (?,?,?,?,?,?)",
+                                           (actor, host, arguments["task_id"], key_hash, task_id, now())).rowcount
+                if not inserted:
+                    existing = self.db.execute("SELECT execution_id FROM r1_idempotency WHERE actor=? AND host_id=? AND registered_task_id=? AND key_hash=?",
+                                               (actor, host, arguments["task_id"], key_hash)).fetchone()
+                    self.db.commit()
+                    assert existing
+                    return existing["execution_id"]
             self.db.execute("INSERT INTO tasks (task_id,actor,host_id,capability,arguments,status,created_at,idempotency_key) VALUES (?,?,?,?,?,?,?,?)",
-                            (task_id, actor, host, capability, json.dumps(arguments, sort_keys=True), "QUEUED", now(), idempotency_key))
+                            (task_id, actor, host, capability, json.dumps(arguments, sort_keys=True), "QUEUED", now(), token_hash(idempotency_key) if idempotency_key else None))
             self.db.commit()
             self.changed.notify_all()
         return task_id
@@ -190,30 +208,49 @@ class Store:
         if status not in {"SUCCEEDED", "FAILED"}:
             return False
         raw = json.dumps(result, separators=(",", ":")).encode() if result is not None else b""
-        if len(raw) > 1_000_000:
-            status, result, raw, error = "FAILED", None, b"", "result exceeds Controller forwarding limit"
+        if len(raw) > MAX_RESULT_BYTES:
+            if isinstance(result, dict) and result.get("execution_id") == task_id:
+                result = {"execution_id": task_id, "task_id": result.get("task_id"), "state": "result_rejected_oversize",
+                          "stdout": "", "stderr": "", "stdout_bytes": result.get("stdout_bytes", 0), "stderr_bytes": result.get("stderr_bytes", 0),
+                          "stdout_truncated": True, "stderr_truncated": True, "duration_ms": result.get("duration_ms"),
+                          "timeout_seconds": result.get("timeout_seconds"), "task_identity": result.get("task_identity")}
+                raw, status, error = json.dumps(result, separators=(",", ":")).encode(), "FAILED", {"code": "result_too_large", "message": "result exceeded Controller forwarding limit"}
+            else:
+                status, result, raw, error = "FAILED", None, b"", "result exceeds Controller forwarding limit"
         error_value = json.dumps(error, separators=(",", ":")) if isinstance(error, dict) else error
         with self.lock:
+            self._expire_r1_results()
+            existing = self.db.execute("SELECT capability, status FROM tasks WHERE task_id=? AND host_id=?", (task_id, host_id)).fetchone()
+            if existing and existing["capability"] == R1_CAPABILITY and existing["status"] in TERMINAL:
+                return True
             changed = self.db.execute("UPDATE tasks SET status=?, finished_at=?, result_bytes=?, result_hash=?, error=? "
                                      "WHERE task_id=? AND host_id=? AND status='RUNNING'",
                                      (status, now(), len(raw), hashlib.sha256(raw).hexdigest() if raw else None, error_value, task_id, host_id)).rowcount
             self.db.commit()
             if changed and result is not None:
-                self.results[task_id] = result
+                if existing and existing["capability"] == R1_CAPABILITY:
+                    self.db.execute("INSERT OR REPLACE INTO r1_results VALUES (?,?,?,NULL)",
+                                    (task_id, json.dumps(result, separators=(",", ":")), now() + R1_RESULT_RETENTION_SECONDS))
+                else:
+                    self.results[task_id] = result
             if changed and isinstance(result, dict) and result.get("execution_id") == task_id:
-                task = self.db.execute("SELECT actor, host_id, arguments, created_at, started_at FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+                task = self.db.execute("SELECT actor, host_id, arguments, created_at, started_at, idempotency_key FROM tasks WHERE task_id=?", (task_id,)).fetchone()
                 arguments = json.loads(task["arguments"])
                 self.db.execute("INSERT OR REPLACE INTO execution_audit VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (task_id, task["actor"], task["host_id"], str(arguments.get("task_id", "")), result.get("task_identity"),
-                     token_hash(arguments["idempotency_key"]) if arguments.get("idempotency_key") else None, task["created_at"], task["started_at"], now(), result.get("duration_ms"),
+                     task["idempotency_key"], task["created_at"], task["started_at"], now(), result.get("duration_ms"),
                      result.get("state"), result.get("exit_code"), result.get("terminating_signal"), result.get("timeout_seconds"),
                      result.get("stdout_bytes"), result.get("stderr_bytes"), int(bool(result.get("stdout_truncated"))), int(bool(result.get("stderr_truncated"))),
                      result.get("stdout_hash"), result.get("stderr_hash"), (error or {}).get("code") if isinstance(error, dict) else None))
+                self.db.commit()
+            elif changed:
                 self.db.commit()
         return bool(changed)
 
     def task(self, task_id: str) -> dict[str, Any] | None:
         with self.lock:
+            self._expire_r1_results()
+            self.db.commit()
             row = self.db.execute("SELECT * FROM tasks WHERE task_id=?", (task_id,)).fetchone()
             if not row:
                 return None
@@ -227,8 +264,17 @@ class Store:
                     structured = json.loads(result["error"])
                     if isinstance(structured, dict): result["error"] = structured
                 except json.JSONDecodeError: pass
-            # Result observations are a short-lived forwarding channel, not persisted raw payloads.
-            if result["status"] in TERMINAL and task_id in self.results:
+            if result["capability"] == R1_CAPABILITY and result["status"] in TERMINAL:
+                retained = self.db.execute("SELECT result, expires_at, expired_at FROM r1_results WHERE execution_id=?", (task_id,)).fetchone()
+                if retained and retained["result"] is not None and retained["expires_at"] >= now():
+                    result["result"] = json.loads(retained["result"])
+                else:
+                    if retained and retained["result"] is not None:
+                        self.db.execute("UPDATE r1_results SET result=NULL, expired_at=? WHERE execution_id=?", (now(), task_id))
+                    result["result"] = {"execution_id": task_id, "task_id": result["arguments"].get("task_id"), "state": "result_expired"}
+                    result["result_expired"] = True
+            # R0 observations remain a short-lived forwarding channel.
+            elif result["status"] in TERMINAL and task_id in self.results:
                 result["result"] = self.results.pop(task_id)
             return result
 

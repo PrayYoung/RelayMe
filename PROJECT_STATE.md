@@ -49,11 +49,13 @@ v0.3 bounded registered-task implementation is locally and real-host validated o
 - Extended resource discovery, CLI, and generic MCP with safe registered-task metadata and `run_registered_task`; no arbitrary arguments, shell, SSH, mutation, or model-specific behavior was added.
 - Validated the v0.3 package in a clean temporary environment with the MCP SDK installed: all 38 regression tests passed and the MCP server constructed successfully.
 - Completed real-host R1 acceptance using exactly one isolated `demo-health-check` task. Resource discovery, scoped CLI execution, generic MCP stdio execution, task-level authorization rejection, idempotency replay, audit metadata, non-root Agent identity, and all existing R0 capabilities passed. The disposable acceptance credential was revoked and removed after validation.
+- Corrected R1 delivery safety without changing the capability model: SQLite-backed atomic idempotency records, retained bounded replay results with explicit expiry state, Agent pending-result redelivery after restart, harmless duplicate Controller acknowledgements, and a Controller-compatible per-stream output ceiling.
+- Validated delivery safety with 47 automated tests, including concurrent same-key creation, replay after result read, duplicate result delivery, Agent restart before confirmation without task rerun, Controller restart ambiguity, result expiry, maximum output, and oversized-result audit handling. The isolated real host also confirmed retained replay result, a single execution/audit record, Agent restart continuity, and R0 continuity; the disposable credential was revoked.
 
 ## Current work
 
-- v0.3 bounded execution is implemented and accepted on the isolated real-host demo. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
+- v0.3 bounded execution and its focused delivery-safety correction are implemented and accepted on the isolated real-host demo. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
 
 ## Next action
 
-- Perform a focused release review before creating a v0.3.0 tag.
+- Repeat the v0.3 focused release review, then create a v0.3.0 tag if no blocker remains.
