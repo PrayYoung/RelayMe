@@ -2,6 +2,8 @@
 
 RelayMe is a small, vendor-neutral remote operations bridge. A client creates a task with the Controller; a Host Agent obtains it through outbound long-polling, enforces its local policy, and returns a bounded structured result.
 
+Requires Python 3.10 or newer.
+
 It implements seven read-only R0 capabilities: `list_hosts`, `list_host_resources`, `host_status`, `process_list`, `read_logs`, `read_file`, and `git_diff`. v0.3 adds one bounded R1 capability: `run_registered_task`.
 
 R1 is not shell access. The client selects only a host, a locally registered task ID, and an optional opaque idempotency key. The Agent fixes the executable, argv, working directory, minimal environment, timeout, output limits, and execution identity; tasks never use a shell and must not run as root.
