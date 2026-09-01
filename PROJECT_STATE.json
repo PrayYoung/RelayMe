@@ -1,6 +1,6 @@
 {
-  "version": "0.3",
-  "status": "r1_delivery_safety_real_host_acceptance_passed",
+  "version": "0.4",
+  "status": "v04_synthetic_executor_bridge_locally_validated",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -54,8 +54,12 @@
     "Implemented one bounded R1 run_registered_task capability with local fixed-task policy, exact task scopes, non-root clean-environment execution, timeout/process-group cleanup, bounded output, cooldown, Controller-generated execution IDs, duplicate-result retention, durable audit metadata, safe task discovery, CLI, and generic MCP exposure",
     "Validated v0.3 in a clean temporary package environment with MCP SDK support: all 39 regression tests passed and the generic MCP server constructed successfully",
     "Completed real-host R1 acceptance on the isolated synthetic demo: safe task discovery, scoped CLI and generic MCP execution, exact-task-scope rejection, idempotency replay, execution audit metadata, non-root Agent identity, and all existing R0 capabilities passed; the disposable acceptance credential was revoked and removed",
-    "Corrected focused R1 delivery safety with SQLite-backed atomic idempotency, retained bounded replay results with explicit expiry, Agent restart redelivery of unconfirmed results, harmless duplicate acknowledgements, and Controller-compatible output caps; 47 automated tests and isolated real-host replay/audit/R0 continuity passed, and the disposable credential was revoked"
+    "Corrected focused R1 delivery safety with SQLite-backed atomic idempotency, retained bounded replay results with explicit expiry, Agent restart redelivery of unconfirmed results, harmless duplicate acknowledgements, and Controller-compatible output caps; 47 automated tests and isolated real-host replay/audit/R0 continuity passed, and the disposable credential was revoked",
+    "Added v0.4 start_registered_executor_task for the single fixed patch-and-test specification with exact executor-profile scopes, a bounded untrusted brief, and optional idempotency",
+    "Added Agent-local executor profiles for fixed repository/base, disposable worktree/output roots, rootless Podman network-none sandbox defaults, resource/output bounds, and opaque local credential/network profile references without provider-specific Core logic",
+    "Added owner-scoped executor task state/result/review queries through the HTTP API, CLI, and generic MCP adapter; resource discovery exposes only safe profile metadata",
+    "Validated a synthetic research-patch-test profile: disposable-worktree-only change, bounded review artifacts, source repository preservation, and no rerun on replay; base regression suite passed with 52 tests (the optional MCP-SDK test is skipped in that interpreter), while a clean MCP-enabled environment passed all MCP adapter tests plus v0.4.0 install/wheel/CLI and 12-tool MCP construction"
   ],
-  "current_work": "v0.3 bounded execution and the focused delivery-safety correction are implemented and accepted on the isolated real-host demo; deployment details and private ground truth remain outside Git",
-  "next_action": "Repeat the v0.3 focused release review, then create a v0.3.0 tag if no blocker remains"
+  "current_work": "v0.4 executor-task bridge is locally accepted with a synthetic profile; real executor profiles, credentials, network bridges, images, and task policy remain deployment-local and untracked",
+  "next_action": "Perform one deployment-local rootless-Podman executor acceptance using a non-provider synthetic profile before registering any provider-enabled task"
 }

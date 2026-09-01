@@ -1,3 +1,3 @@
-"""RelayMe v0.3: read-only operations plus bounded registered tasks."""
+"""RelayMe v0.4: R0 observation plus bounded registered-task execution."""
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"

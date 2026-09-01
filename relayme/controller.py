@@ -1,4 +1,4 @@
-"""Single-process HTTP/JSON Controller for RelayMe v0.3 R0 and bounded R1."""
+"""Single-process HTTP/JSON Controller for RelayMe R0 and bounded R1 tasks."""
 from __future__ import annotations
 
 import argparse
@@ -17,8 +17,10 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 R1_CAPABILITY = "run_registered_task"
-CAPABILITIES = frozenset({"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff", R1_CAPABILITY})
-TERMINAL = frozenset({"SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED"})
+EXECUTOR_CAPABILITY = "start_registered_executor_task"
+PERSISTENT_CAPABILITIES = frozenset({R1_CAPABILITY, EXECUTOR_CAPABILITY})
+CAPABILITIES = frozenset({"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff", R1_CAPABILITY, EXECUTOR_CAPABILITY})
+TERMINAL = frozenset({"SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED", "AGENT_INTERRUPTED", "AGENT_LOST"})
 MAX_RESULT_BYTES = 1_000_000
 R1_RESULT_RETENTION_SECONDS = 3600
 
@@ -83,8 +85,8 @@ class Store:
             raise ValueError("client identity is required")
         capabilities = scopes.get("capabilities", [])
         hosts = scopes.get("hosts", [])
-        valid_r1_scope = lambda scope: isinstance(scope, str) and scope.startswith(R1_CAPABILITY + ":") and len(scope) > len(R1_CAPABILITY) + 1
-        if not isinstance(capabilities, list) or not capabilities or not all(capability in CAPABILITIES - {R1_CAPABILITY} or valid_r1_scope(capability) for capability in capabilities):
+        valid_r1_scope = lambda scope: isinstance(scope, str) and ((scope.startswith(R1_CAPABILITY + ":") and len(scope) > len(R1_CAPABILITY) + 1) or (scope.startswith("run_executor_task:") and len(scope) > len("run_executor_task:")))
+        if not isinstance(capabilities, list) or not capabilities or not all(capability in CAPABILITIES - PERSISTENT_CAPABILITIES or valid_r1_scope(capability) for capability in capabilities):
             raise ValueError("invalid client capabilities")
         if not isinstance(hosts, list) or not all(isinstance(host, str) and host for host in hosts):
             raise ValueError("invalid client host scope")
@@ -162,21 +164,30 @@ class Store:
         return {"host_id": host["host_id"], "hostname": host["hostname"],
                 "services": list(resources.get("services", [])), "repositories": list(resources.get("repositories", [])),
                 "allowed_file_roots": list(resources.get("allowed_file_roots", [])),
-                "registered_tasks": list(resources.get("registered_tasks", []))}
+                "registered_tasks": list(resources.get("registered_tasks", [])),
+                "executor_profiles": list(resources.get("executor_profiles", []))}
+
+    @staticmethod
+    def _idempotency_target(capability: str, arguments: dict[str, Any]) -> str:
+        if capability == R1_CAPABILITY:
+            return arguments["task_id"]
+        if capability == EXECUTOR_CAPABILITY:
+            return arguments["executor_profile_id"] + ":" + arguments["task_spec_id"]
+        raise ValueError("capability is not idempotent")
 
     def create_task(self, actor: str, host: str, capability: str, arguments: dict[str, Any]) -> str:
         arguments = dict(arguments)
-        idempotency_key = arguments.pop("idempotency_key", None) if capability == R1_CAPABILITY else None
+        idempotency_key = arguments.pop("idempotency_key", None) if capability in PERSISTENT_CAPABILITIES else None
         task_id = str(uuid.uuid4())
         with self.changed:
             self._expire_r1_results()
             if idempotency_key:
                 key_hash = token_hash(idempotency_key)
                 inserted = self.db.execute("INSERT OR IGNORE INTO r1_idempotency VALUES (?,?,?,?,?,?)",
-                                           (actor, host, arguments["task_id"], key_hash, task_id, now())).rowcount
+                                           (actor, host, self._idempotency_target(capability, arguments), key_hash, task_id, now())).rowcount
                 if not inserted:
                     existing = self.db.execute("SELECT execution_id FROM r1_idempotency WHERE actor=? AND host_id=? AND registered_task_id=? AND key_hash=?",
-                                               (actor, host, arguments["task_id"], key_hash)).fetchone()
+                                               (actor, host, self._idempotency_target(capability, arguments), key_hash)).fetchone()
                     self.db.commit()
                     assert existing
                     return existing["execution_id"]
@@ -221,14 +232,14 @@ class Store:
         with self.lock:
             self._expire_r1_results()
             existing = self.db.execute("SELECT capability, status FROM tasks WHERE task_id=? AND host_id=?", (task_id, host_id)).fetchone()
-            if existing and existing["capability"] == R1_CAPABILITY and existing["status"] in TERMINAL:
+            if existing and existing["capability"] in PERSISTENT_CAPABILITIES and existing["status"] in TERMINAL:
                 return True
             changed = self.db.execute("UPDATE tasks SET status=?, finished_at=?, result_bytes=?, result_hash=?, error=? "
                                      "WHERE task_id=? AND host_id=? AND status='RUNNING'",
                                      (status, now(), len(raw), hashlib.sha256(raw).hexdigest() if raw else None, error_value, task_id, host_id)).rowcount
             self.db.commit()
             if changed and result is not None:
-                if existing and existing["capability"] == R1_CAPABILITY:
+                if existing and existing["capability"] in PERSISTENT_CAPABILITIES:
                     self.db.execute("INSERT OR REPLACE INTO r1_results VALUES (?,?,?,NULL)",
                                     (task_id, json.dumps(result, separators=(",", ":")), now() + R1_RESULT_RETENTION_SECONDS))
                 else:
@@ -237,7 +248,7 @@ class Store:
                 task = self.db.execute("SELECT actor, host_id, arguments, created_at, started_at, idempotency_key FROM tasks WHERE task_id=?", (task_id,)).fetchone()
                 arguments = json.loads(task["arguments"])
                 self.db.execute("INSERT OR REPLACE INTO execution_audit VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (task_id, task["actor"], task["host_id"], str(arguments.get("task_id", "")), result.get("task_identity"),
+                    (task_id, task["actor"], task["host_id"], str(arguments.get("task_id", arguments.get("executor_profile_id", ""))), result.get("task_identity"),
                      task["idempotency_key"], task["created_at"], task["started_at"], now(), result.get("duration_ms"),
                      result.get("state"), result.get("exit_code"), result.get("terminating_signal"), result.get("timeout_seconds"),
                      result.get("stdout_bytes"), result.get("stderr_bytes"), int(bool(result.get("stdout_truncated"))), int(bool(result.get("stderr_truncated"))),
@@ -256,27 +267,49 @@ class Store:
                 return None
             result = dict(row)
             if result["status"] == "RUNNING" and result["started_at"] and result["started_at"] + 300 < now():
-                self.db.execute("UPDATE tasks SET status='TIMED_OUT', finished_at=? WHERE task_id=?", (now(), task_id)); self.db.commit()
-                result["status"], result["finished_at"] = "TIMED_OUT", now()
+                if result["capability"] == EXECUTOR_CAPABILITY:
+                    agent = self.db.execute("SELECT last_heartbeat FROM agents WHERE host_id=?", (result["host_id"],)).fetchone()
+                    terminal_state = "AGENT_LOST" if not agent or not agent["last_heartbeat"] or agent["last_heartbeat"] < now() - 90 else "AGENT_INTERRUPTED"
+                else:
+                    terminal_state = "TIMED_OUT"
+                self.db.execute("UPDATE tasks SET status=?, finished_at=? WHERE task_id=?", (terminal_state, now(), task_id)); self.db.commit()
+                result["status"], result["finished_at"] = terminal_state, now()
             result["arguments"] = json.loads(result["arguments"])
             if result["error"]:
                 try:
                     structured = json.loads(result["error"])
                     if isinstance(structured, dict): result["error"] = structured
                 except json.JSONDecodeError: pass
-            if result["capability"] == R1_CAPABILITY and result["status"] in TERMINAL:
+            if result["capability"] in PERSISTENT_CAPABILITIES and result["status"] in TERMINAL:
                 retained = self.db.execute("SELECT result, expires_at, expired_at FROM r1_results WHERE execution_id=?", (task_id,)).fetchone()
                 if retained and retained["result"] is not None and retained["expires_at"] >= now():
                     result["result"] = json.loads(retained["result"])
                 else:
                     if retained and retained["result"] is not None:
                         self.db.execute("UPDATE r1_results SET result=NULL, expired_at=? WHERE execution_id=?", (now(), task_id))
-                    result["result"] = {"execution_id": task_id, "task_id": result["arguments"].get("task_id"), "state": "result_expired"}
+                    result["result"] = {"execution_id": task_id, "task_id": result["arguments"].get("task_id", task_id), "state": "result_expired"}
                     result["result_expired"] = True
             # R0 observations remain a short-lived forwarding channel.
             elif result["status"] in TERMINAL and task_id in self.results:
                 result["result"] = self.results.pop(task_id)
             return result
+
+    def reviewable_tasks(self, actor: str, administrator: bool) -> list[dict[str, Any]]:
+        with self.lock:
+            self._expire_r1_results(); self.db.commit()
+            query = "SELECT task_id,host_id,status,created_at,finished_at,arguments FROM tasks WHERE capability=? AND status IN ({})".format(",".join("?" for _ in TERMINAL))
+            params: list[Any] = [EXECUTOR_CAPABILITY, *TERMINAL]
+            if not administrator:
+                query += " AND actor=?"; params.append(actor)
+            rows = self.db.execute(query + " ORDER BY created_at DESC LIMIT 100", params).fetchall()
+            values = []
+            for row in rows:
+                args = json.loads(row["arguments"])
+                retained = self.db.execute("SELECT result FROM r1_results WHERE execution_id=?", (row["task_id"],)).fetchone()
+                result = json.loads(retained["result"]) if retained and retained["result"] else None
+                if result and result.get("reviewable"):
+                    values.append({"task_id": row["task_id"], "host_id": row["host_id"], "state": row["status"], "executor_profile_id": args.get("executor_profile_id"), "task_spec_id": args.get("task_spec_id"), "created_at": row["created_at"], "finished_at": row["finished_at"]})
+            return values
 
 
 class Api(BaseHTTPRequestHandler):
@@ -315,6 +348,9 @@ class Api(BaseHTTPRequestHandler):
         if capability == R1_CAPABILITY:
             task_id = (arguments or {}).get("task_id")
             return isinstance(task_id, str) and (R1_CAPABILITY + ":" + task_id) in scopes.get("capabilities", [])
+        if capability == EXECUTOR_CAPABILITY:
+            profile = (arguments or {}).get("executor_profile_id")
+            return isinstance(profile, str) and ("run_executor_task:" + profile) in scopes.get("capabilities", [])
         return capability in scopes.get("capabilities", [])
     def do_POST(self) -> None:
         try:
@@ -339,6 +375,10 @@ class Api(BaseHTTPRequestHandler):
                 if cap == R1_CAPABILITY:
                     if set(args) - {"task_id", "idempotency_key"} or not isinstance(args.get("task_id"), str) or not args["task_id"] or ("idempotency_key" in args and (not isinstance(args["idempotency_key"], str) or not args["idempotency_key"] or len(args["idempotency_key"]) > 256)):
                         self.fail(400, "invalid registered-task request", "invalid_registered_task_request")
+                if cap == EXECUTOR_CAPABILITY:
+                    allowed = {"executor_profile_id", "task_spec_id", "brief", "idempotency_key"}
+                    if set(args) - allowed or not isinstance(args.get("executor_profile_id"), str) or not args["executor_profile_id"] or args.get("task_spec_id") != "patch-and-test" or not isinstance(args.get("brief"), str) or not 1 <= len(args["brief"]) <= 8192 or ("idempotency_key" in args and (not isinstance(args["idempotency_key"], str) or not 1 <= len(args["idempotency_key"]) <= 256)):
+                        self.fail(400, "invalid executor-task request", "invalid_executor_task_request")
                 resolved, error = self.server.store.resolve_host(host)
                 if error == "unknown_host": self.fail(404, "host identifier is unknown", error)
                 if error == "ambiguous_hostname": self.fail(409, "hostname is ambiguous; use host_id", error)
@@ -368,10 +408,17 @@ class Api(BaseHTTPRequestHandler):
                 if not self.allowed(scopes, resolved["host_id"], "list_host_resources"): self.fail(403, "scope does not permit host resources")
                 self.reply(200, {"resources": self.server.store.resources(resolved)}); return
             if path.startswith("/v1/tasks/"):
+                if path.endswith("/result"):
+                    task = self.server.store.task(path.removesuffix("/result").rsplit("/", 1)[1])
+                    if not task: self.fail(404, "task not found")
+                    if task["actor"] != actor and not scopes.get("admin"): self.fail(403, "task not visible")
+                    self.reply(200, {"task_id": task["task_id"], "result": task.get("result"), "result_expired": task.get("result_expired", False)}); return
                 task = self.server.store.task(path.rsplit("/", 1)[1])
                 if not task: self.fail(404, "task not found")
                 if task["actor"] != actor and not scopes.get("admin"): self.fail(403, "task not visible")
                 self.reply(200, {"task": task}); return
+            if path == "/v1/reviewable-tasks":
+                self.reply(200, {"tasks": self.server.store.reviewable_tasks(actor, bool(scopes.get("admin")))}); return
             self.fail(404, "not found")
         except (RuntimeError, ValueError): pass
 

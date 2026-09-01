@@ -28,5 +28,8 @@
       "idempotent": true,
       "run_as": "agent"
     }
-  }
+  },
+  "executor_credential_profiles": {},
+  "executor_network_profiles": {},
+  "executor_profiles": {}
 }

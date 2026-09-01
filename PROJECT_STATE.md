@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.3 bounded registered-task implementation is locally and real-host validated on the isolated synthetic demo. The synthetic demo remains healthy.
+v0.4 registered executor-task bridge is locally validated with a synthetic, non-provider patch-and-test profile. Existing v0.3 behavior remains validated; deployment credentials, network profiles, and real task policies remain local and untracked.
 
 ## Completed
 
@@ -51,11 +51,15 @@ v0.3 bounded registered-task implementation is locally and real-host validated o
 - Completed real-host R1 acceptance using exactly one isolated `demo-health-check` task. Resource discovery, scoped CLI execution, generic MCP stdio execution, task-level authorization rejection, idempotency replay, audit metadata, non-root Agent identity, and all existing R0 capabilities passed. The disposable acceptance credential was revoked and removed after validation.
 - Corrected R1 delivery safety without changing the capability model: SQLite-backed atomic idempotency records, retained bounded replay results with explicit expiry state, Agent pending-result redelivery after restart, harmless duplicate Controller acknowledgements, and a Controller-compatible per-stream output ceiling.
 - Validated delivery safety with 47 automated tests, including concurrent same-key creation, replay after result read, duplicate result delivery, Agent restart before confirmation without task rerun, Controller restart ambiguity, result expiry, maximum output, and oversized-result audit handling. The isolated real host also confirmed retained replay result, a single execution/audit record, Agent restart continuity, and R0 continuity; the disposable credential was revoked.
+- Added the v0.4 bounded `start_registered_executor_task` capability for the single fixed `patch-and-test` task specification. Clients can select only a registered executor profile, the fixed task specification, a bounded untrusted brief, and an optional idempotency key.
+- Added Agent-local executor profiles with fixed repository/base revision, disposable worktree/output roots, rootless Podman invocation, `--network none`, read-only sandbox defaults, resource limits, bounded transcripts/artifacts, and opaque local credential/network profile references. No provider hostname, credential value, or provider-specific logic is present in RelayMe Core.
+- Added owner-scoped executor task state/result/review queries to the Controller, CLI, and generic MCP adapter. Discovery exposes only safe profile metadata.
+- Validated the synthetic `research-patch-test` acceptance profile: a fixed fake Podman launcher changed only a disposable Git worktree, produced bounded review artifacts, preserved the source repository, and confirmed replay does not rerun the execution. The full base suite passed (52 tests; its optional MCP-SDK test is skipped in the base interpreter); a clean MCP-enabled environment passed all MCP adapter tests, package install, wheel build, CLI entry points, and 12-tool MCP server construction.
 
 ## Current work
 
-- v0.3 bounded execution and its focused delivery-safety correction are implemented and accepted on the isolated real-host demo. Runtime secrets, host configuration, private-network details, and fixture ground truth remain outside Git.
+- v0.4 executor-task bridge implementation is complete and locally accepted with a synthetic profile. Real executor profiles, credentials, egress bridges, sandbox images, and task policies remain deployment-local and require separate real-host acceptance.
 
 ## Next action
 
-- Repeat the v0.3 focused release review, then create a v0.3.0 tag if no blocker remains.
+- Perform one deployment-local rootless-Podman executor acceptance using a non-provider synthetic profile before any provider-enabled task is registered.

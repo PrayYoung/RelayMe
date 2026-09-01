@@ -1,12 +1,14 @@
-# RelayMe v0.3
+# RelayMe v0.4
 
 RelayMe is a small, vendor-neutral remote operations bridge. A client creates a task with the Controller; a Host Agent obtains it through outbound long-polling, enforces its local policy, and returns a bounded structured result.
 
 Requires Python 3.10 or newer.
 
-It implements seven read-only R0 capabilities: `list_hosts`, `list_host_resources`, `host_status`, `process_list`, `read_logs`, `read_file`, and `git_diff`. v0.3 adds one bounded R1 capability: `run_registered_task`.
+It implements seven read-only R0 capabilities: `list_hosts`, `list_host_resources`, `host_status`, `process_list`, `read_logs`, `read_file`, and `git_diff`. v0.4 has two bounded R1 capabilities: `run_registered_task` and `start_registered_executor_task`.
 
-R1 is not shell access. The client selects only a host, a locally registered task ID, and an optional opaque idempotency key. The Agent fixes the executable, argv, working directory, minimal environment, timeout, output limits, and execution identity; tasks never use a shell and must not run as root.
+R1 is not shell access. For a normal registered task, the client selects only a host, a locally registered task ID, and an optional opaque idempotency key. The Agent fixes the executable, argv, working directory, minimal environment, timeout, output limits, and execution identity; tasks never use a shell and must not run as root.
+
+`start_registered_executor_task` is a fixed `patch-and-test` profile, not a general job runner. The client supplies only a host, registered executor profile ID, the literal task spec ID `patch-and-test`, a bounded untrusted brief, and an optional idempotency key. The Agent resolves the repository/base revision, disposable Git worktree, rootless Podman sandbox, bounded artifact paths, and opaque local credential/network profile references. Provider credentials, provider destinations, and proxy policy stay deployment-local and are never interpreted by RelayMe Core.
 
 For an idempotency key, RelayMe atomically reuses the original execution. Its bounded result remains replayable for a short retention period; after expiry RelayMe returns stable execution metadata with a `result_expired` state and never runs the task again.
 
@@ -35,6 +37,11 @@ relayme admin --db /protected/path/relayme.db create-client \
   --name bounded-runner --capability list_host_resources \
   --capability run_registered_task:example-health-check \
   --output-file /protected/path/bounded-runner-token
+
+relayme admin --db /protected/path/relayme.db create-client \
+  --name bounded-executor --capability list_host_resources \
+  --capability run_executor_task:research-patch-test \
+  --output-file /protected/path/bounded-executor-token
 ```
 
 The create command emits the new token once unless `--output-file` is used. Only its hash and audit metadata are retained in the Controller database. Use the resulting scoped token to create tasks or list hosts:
@@ -61,6 +68,8 @@ relayme logs HOST_ID example.service --last-n 100 --max-bytes 65536
 relayme read-file HOST_ID /srv/example-app/config.json
 relayme git-diff HOST_ID example-app
 relayme run-task HOST_ID example-health-check --idempotency-key one-safe-run
+relayme start-executor-task HOST_ID research-patch-test patch-and-test "Apply the bounded requested change." --idempotency-key one-safe-execution
+relayme list-reviewable-tasks
 ```
 
 `RELAYME_CA_CERT` is optional when the Controller certificate chains to the client machine's normal trust store. The CLI never falls back to SSH or shell execution.
@@ -77,6 +86,10 @@ The optional MCP adapter translates standard MCP tool calls to the existing Rela
 - `read_file`
 - `git_diff`
 - `run_registered_task`
+- `start_registered_executor_task`
+- `get_task`
+- `task_result`
+- `list_reviewable_tasks`
 
 Call `list_hosts` when the host identity is unknown, then `list_host_resources` before service-, repository-, path-, or task-scoped tools. Host-scoped operations accept a canonical host ID or a unique hostname. Discovery returns only resources already registered by the Host Agent; it never lists arbitrary files or system services. Registered-task discovery exposes only safe IDs, descriptions, and timeout bounds—not executable paths, argv, environments, or working directories.
 
@@ -92,6 +105,6 @@ export RELAYME_CA_CERT=/secure/local/path/controller-ca.pem
 relayme-mcp
 ```
 
-An MCP-capable client launches `relayme-mcp` as a stdio server and supplies the environment locally. The Controller can be reached over localhost, a LAN, Tailscale, a secure MCP tunnel, or ordinary HTTPS; transport is deployment configuration, not a RelayMe dependency. The adapter makes no network listener of its own. Its sole execution tool is the bounded `run_registered_task` R1 operation; it does not expose arbitrary commands, mutations, SSH, or shell access.
+An MCP-capable client launches `relayme-mcp` as a stdio server and supplies the environment locally. The Controller can be reached over localhost, a LAN, Tailscale, a secure MCP tunnel, or ordinary HTTPS; transport is deployment configuration, not a RelayMe dependency. The adapter makes no network listener of its own. Its execution tools select only locally registered fixed policy; they do not expose arbitrary commands, mutations, SSH, or shell access.
 
 Run the regression suite with `python -m unittest discover -s tests -v`.

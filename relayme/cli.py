@@ -1,4 +1,4 @@
-"""Small JSON CLI client for RelayMe v0.3 R0 observation and bounded R1 tasks."""
+"""Small JSON CLI client for RelayMe R0 and bounded R1 tasks."""
 from __future__ import annotations
 
 import argparse
@@ -25,7 +25,7 @@ def wait_for_task(url: str, token: str, task_id: str, ca_cert: str | None, wait_
     deadline = time.monotonic() + wait_seconds
     while True:
         value = call(url, token, "GET", "/v1/tasks/" + task_id, ca_cert=ca_cert)
-        if value["task"]["status"] in {"SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED"}: return value
+        if value["task"]["status"] in {"SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED", "AGENT_INTERRUPTED", "AGENT_LOST"}: return value
         if time.monotonic() >= deadline: raise SystemExit(f"Task {task_id} did not finish within {wait_seconds} seconds")
         time.sleep(1)
 
@@ -52,6 +52,9 @@ def main() -> None:
     read_file = commands.add_parser("read-file"); read_file.add_argument("host"); read_file.add_argument("path")
     git_diff = commands.add_parser("git-diff"); git_diff.add_argument("host"); git_diff.add_argument("repo")
     run_task = commands.add_parser("run-task"); run_task.add_argument("host"); run_task.add_argument("task_id"); run_task.add_argument("--idempotency-key")
+    executor = commands.add_parser("start-executor-task"); executor.add_argument("host"); executor.add_argument("executor_profile_id"); executor.add_argument("task_spec_id"); executor.add_argument("brief"); executor.add_argument("--idempotency-key")
+    reviewable = commands.add_parser("list-reviewable-tasks")
+    result = commands.add_parser("task-result"); result.add_argument("task_id")
     args = parser.parse_args()
     if not args.url or not args.token: parser.error("--url/RELAYME_URL and --token/RELAYME_TOKEN are required")
     if args.command in {"list-hosts", "hosts"}: value = call(args.url, args.token, "GET", "/v1/hosts", ca_cert=args.ca_cert)
@@ -64,6 +67,13 @@ def main() -> None:
         if args.idempotency_key: arguments["idempotency_key"] = args.idempotency_key
         created = call(args.url, args.token, "POST", "/v1/tasks", {"host": args.host, "capability": "run_registered_task", "arguments": arguments}, args.ca_cert)
         value = wait_for_task(args.url, args.token, created["task_id"], args.ca_cert, args.wait_seconds)
+    elif args.command == "start-executor-task":
+        arguments = {"executor_profile_id": args.executor_profile_id, "task_spec_id": args.task_spec_id, "brief": args.brief}
+        if args.idempotency_key: arguments["idempotency_key"] = args.idempotency_key
+        created = call(args.url, args.token, "POST", "/v1/tasks", {"host": args.host, "capability": "start_registered_executor_task", "arguments": arguments}, args.ca_cert)
+        value = wait_for_task(args.url, args.token, created["task_id"], args.ca_cert, args.wait_seconds)
+    elif args.command == "list-reviewable-tasks": value = call(args.url, args.token, "GET", "/v1/reviewable-tasks", ca_cert=args.ca_cert)
+    elif args.command == "task-result": value = call(args.url, args.token, "GET", "/v1/tasks/" + args.task_id + "/result", ca_cert=args.ca_cert)
     else:
         if args.command == "status": host, capability, arguments = args.host, "host_status", {}
         elif args.command == "processes": host, capability, arguments = args.host, "process_list", {}

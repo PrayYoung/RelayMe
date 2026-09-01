@@ -27,7 +27,7 @@ class McpAdapterTests(unittest.TestCase):
         self.adapter = server.RelayMeMcpAdapter(server.ControllerClient(config, self.double))
 
     def test_exposes_exactly_the_r0_and_bounded_r1_tools_without_a_server_prefix(self):
-        self.assertEqual(set(server.TOOL_NAMES), {"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff", "run_registered_task"})
+        self.assertEqual(set(server.TOOL_NAMES), {"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff", "run_registered_task", "start_registered_executor_task", "get_task", "task_result", "list_reviewable_tasks"})
         self.assertEqual(set(server.TOOL_SCHEMAS), set(server.TOOL_NAMES))
         self.assertNotIn("relayme_list_hosts", server.TOOL_NAMES)
 
@@ -41,6 +41,10 @@ class McpAdapterTests(unittest.TestCase):
             ("read_file", {"host": "host-1", "path": "/srv/example-app/config.json"}, ("POST", "/v1/tasks", {"host": "host-1", "capability": "read_file", "arguments": {"path": "/srv/example-app/config.json"}})),
             ("git_diff", {"host": "host-1", "repo": "example-app"}, ("POST", "/v1/tasks", {"host": "host-1", "capability": "git_diff", "arguments": {"repo": "example-app"}})),
             ("run_registered_task", {"host": "host-1", "task_id": "demo-health-check", "idempotency_key": "once"}, ("POST", "/v1/tasks", {"host": "host-1", "capability": "run_registered_task", "arguments": {"task_id": "demo-health-check", "idempotency_key": "once"}})),
+            ("start_registered_executor_task", {"host": "host-1", "executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "Synthetic task", "idempotency_key": "once"}, ("POST", "/v1/tasks", {"host": "host-1", "capability": "start_registered_executor_task", "arguments": {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "Synthetic task", "idempotency_key": "once"}})),
+            ("get_task", {"task_id": "task-1"}, ("GET", "/v1/tasks/task-1", None)),
+            ("task_result", {"task_id": "task-1"}, ("GET", "/v1/tasks/task-1/result", None)),
+            ("list_reviewable_tasks", {}, ("GET", "/v1/reviewable-tasks", None)),
         ]
         for tool, arguments, expected in cases:
             with self.subTest(tool=tool):
@@ -67,6 +71,8 @@ class McpAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "accepts no arguments"): self.adapter.invoke("list_hosts", {"host": "host-1"})
         with self.assertRaisesRegex(ValueError, "only host"):
             self.adapter.invoke("run_registered_task", {"host": "host-1", "task_id": "safe", "argv": ["evil"]})
+        with self.assertRaisesRegex(ValueError, "only host"):
+            self.adapter.invoke("start_registered_executor_task", {"host": "host-1", "executor_profile_id": "safe", "task_spec_id": "patch-and-test", "brief": "x", "argv": ["evil"]})
 
     def test_missing_or_invalid_configuration_fails_clearly(self):
         with self.assertRaisesRegex(server.ConfigurationError, "RELAYME_URL"): server.AdapterConfig.from_env({})

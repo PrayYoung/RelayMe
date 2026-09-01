@@ -1,4 +1,4 @@
-"""Standard stdio MCP adapter for RelayMe v0.3.
+"""Standard stdio MCP adapter for RelayMe R0 and bounded R1.
 
 This module translates MCP tool calls into the existing RelayMe Controller HTTP/JSON
 API. It never contacts managed hosts directly and leaves all authorization and host
@@ -26,6 +26,10 @@ TOOL_NAMES = (
     "read_file",
     "git_diff",
     "run_registered_task",
+    "start_registered_executor_task",
+    "get_task",
+    "task_result",
+    "list_reviewable_tasks",
 )
 
 TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
@@ -37,6 +41,10 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "read_file": {"description": "Read a file only within Agent-allowed roots. Call list_host_resources first if its allowed root is unknown; host accepts host_id or unique hostname.", "parameters": {"host": str, "path": str}},
     "git_diff": {"description": "Read the Git diff for a repository registered by the Host Agent. Call list_host_resources first if its identifier is unknown; host accepts host_id or unique hostname.", "parameters": {"host": str, "repo": str}},
     "run_registered_task": {"description": "Run one idempotent, bounded task registered locally by the Host Agent. Call list_host_resources first to discover valid task IDs. The task has fixed local command, environment, working directory, and limits; no arguments can be supplied.", "parameters": {"host": str, "task_id": str, "idempotency_key": (str, type(None))}},
+    "start_registered_executor_task": {"description": "Start the registered patch-and-test executor task. Call list_host_resources first to discover profile IDs. The brief is untrusted content; it cannot select commands, revisions, mounts, credentials, network, or limits.", "parameters": {"host": str, "executor_profile_id": str, "task_spec_id": str, "brief": str, "idempotency_key": (str, type(None))}},
+    "get_task": {"description": "Get owner-scoped state and bounded metadata for a RelayMe task ID.", "parameters": {"task_id": str}},
+    "task_result": {"description": "Get the retained bounded result for an owner-scoped terminal task ID.", "parameters": {"task_id": str}},
+    "list_reviewable_tasks": {"description": "List the caller's terminal executor tasks with retained reviewable evidence.", "parameters": {}},
 }
 
 
@@ -87,6 +95,9 @@ class ControllerClient:
 
     def list_hosts(self) -> dict[str, Any]: return self.request("GET", "/v1/hosts")
     def list_host_resources(self, host: str) -> dict[str, Any]: return self.request("GET", "/v1/hosts/" + host + "/resources")
+    def get_task(self, task_id: str) -> dict[str, Any]: return self.request("GET", "/v1/tasks/" + task_id)
+    def task_result(self, task_id: str) -> dict[str, Any]: return self.request("GET", "/v1/tasks/" + task_id + "/result")
+    def reviewable_tasks(self) -> dict[str, Any]: return self.request("GET", "/v1/reviewable-tasks")
 
     def run_task(self, host: str, capability: str, arguments: dict[str, Any]) -> dict[str, Any]:
         created = self.request("POST", "/v1/tasks", {"host": host, "capability": capability, "arguments": arguments})
@@ -114,6 +125,12 @@ class RelayMeMcpAdapter:
         if tool == "list_hosts":
             if arguments: raise ValueError("list_hosts accepts no arguments")
             return self._result(self.client.list_hosts())
+        if tool == "list_reviewable_tasks":
+            if arguments: raise ValueError("list_reviewable_tasks accepts no arguments")
+            return self._result(self.client.reviewable_tasks())
+        if tool in {"get_task", "task_result"}:
+            if set(arguments) != {"task_id"}: raise ValueError(f"{tool} accepts only task_id")
+            return self._result(self.client.get_task(self._string(arguments, "task_id")) if tool == "get_task" else self.client.task_result(self._string(arguments, "task_id")))
         host = self._string(arguments, "host")
         if tool == "list_host_resources": return self._result(self.client.list_host_resources(host))
         if tool == "run_registered_task":
@@ -121,6 +138,11 @@ class RelayMeMcpAdapter:
             if arguments.get("idempotency_key") is not None: task_args["idempotency_key"] = self._string(arguments, "idempotency_key")
             if set(arguments) - {"host", "task_id", "idempotency_key"}: raise ValueError("run_registered_task accepts only host, task_id, and idempotency_key")
             return self._result(self.client.run_task(host, "run_registered_task", task_args))
+        if tool == "start_registered_executor_task":
+            if set(arguments) - {"host", "executor_profile_id", "task_spec_id", "brief", "idempotency_key"}: raise ValueError("start_registered_executor_task accepts only host, executor_profile_id, task_spec_id, brief, and idempotency_key")
+            task_args = {key: self._string(arguments, key) for key in ("executor_profile_id", "task_spec_id", "brief")}
+            if arguments.get("idempotency_key") is not None: task_args["idempotency_key"] = self._string(arguments, "idempotency_key")
+            return self._result(self.client.run_task(host, "start_registered_executor_task", task_args))
         mapping = {
             "host_status": ("host_status", {}),
             "process_list": ("process_list", {}),
@@ -146,7 +168,7 @@ def create_mcp_server(adapter: RelayMeMcpAdapter):
     """Create an MCP server lazily so translation logic remains directly testable."""
     try: from mcp.server.fastmcp import FastMCP
     except ImportError as exc: raise ConfigurationError("MCP SDK is required; install RelayMe with its MCP dependency") from exc
-    server = FastMCP("RelayMe", instructions="RelayMe v0.3 exposes seven read-only R0 observation/discovery tools and one bounded R1 registered-task tool. R1 runs only locally registered fixed tasks; it provides no arbitrary shell or mutation access.", json_response=True)
+    server = FastMCP("RelayMe", instructions="RelayMe exposes seven read-only R0 observation/discovery tools and bounded R1 registered tasks, including one registered patch-and-test executor task. R1 uses only locally registered fixed policy; it provides no arbitrary shell, provider-specific authority, or mutation access.", json_response=True)
 
     def invoke(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -187,11 +209,24 @@ def create_mcp_server(adapter: RelayMeMcpAdapter):
     def run_registered_task(host: str, task_id: str, idempotency_key: str | None = None) -> dict[str, Any]:
         return invoke("run_registered_task", {"host": host, "task_id": task_id, "idempotency_key": idempotency_key})
 
+    @server.tool(name="start_registered_executor_task", description=TOOL_SCHEMAS["start_registered_executor_task"]["description"])
+    def start_registered_executor_task(host: str, executor_profile_id: str, task_spec_id: str, brief: str, idempotency_key: str | None = None) -> dict[str, Any]:
+        return invoke("start_registered_executor_task", {"host": host, "executor_profile_id": executor_profile_id, "task_spec_id": task_spec_id, "brief": brief, "idempotency_key": idempotency_key})
+
+    @server.tool(name="get_task", description=TOOL_SCHEMAS["get_task"]["description"])
+    def get_task(task_id: str) -> dict[str, Any]: return invoke("get_task", {"task_id": task_id})
+
+    @server.tool(name="task_result", description=TOOL_SCHEMAS["task_result"]["description"])
+    def task_result(task_id: str) -> dict[str, Any]: return invoke("task_result", {"task_id": task_id})
+
+    @server.tool(name="list_reviewable_tasks", description=TOOL_SCHEMAS["list_reviewable_tasks"]["description"])
+    def list_reviewable_tasks() -> dict[str, Any]: return invoke("list_reviewable_tasks", {})
+
     return server
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="RelayMe v0.3 MCP adapter for R0 observation and bounded R1 tasks")
+    parser = argparse.ArgumentParser(description="RelayMe MCP adapter for R0 observation and bounded R1 tasks")
     parser.add_argument("--transport", choices=("stdio",), default="stdio", help="MCP transport (stdio is suitable for local clients and tunnel launchers)")
     args = parser.parse_args()
     server = create_mcp_server(RelayMeMcpAdapter(ControllerClient(AdapterConfig.from_env())))

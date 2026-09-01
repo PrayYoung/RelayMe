@@ -158,6 +158,90 @@ class RegisteredTaskPolicyTests(unittest.TestCase):
         self.assertEqual(result["stdout_bytes"], MAX_EXECUTION_STREAM_BYTES)
 
 
+class ExecutorTaskPolicyTests(unittest.TestCase):
+    """Synthetic acceptance coverage for the fixed patch-and-test profile only."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name) / "allowed"; self.root.mkdir()
+        self.repo = self.root / "synthetic-repo"; self.repo.mkdir()
+        for command in (["git", "init", "-q", str(self.repo)], ["git", "-C", str(self.repo), "config", "user.email", "example@example.invalid"], ["git", "-C", str(self.repo), "config", "user.name", "RelayMe Test"]):
+            __import__("subprocess").run(command, check=True)
+        (self.repo / "app.txt").write_text("before\n")
+        __import__("subprocess").run(["git", "-C", str(self.repo), "add", "app.txt"], check=True)
+        __import__("subprocess").run(["git", "-C", str(self.repo), "commit", "-qm", "synthetic base"], check=True)
+        self.worktrees = self.root / "worktrees"; self.worktrees.mkdir()
+        self.outputs = self.root / "outputs"; self.outputs.mkdir()
+        self.launcher = self.root / "fake-podman"
+        self.launcher.write_text("""#!/usr/bin/env python3
+import json, sys
+from pathlib import Path
+args = sys.argv[1:]
+if args[0] == 'rm': raise SystemExit(0)
+mounts = [args[index + 1] for index, item in enumerate(args[:-1]) if item == '-v']
+worktree = Path(next(item.split(':', 1)[0] for item in mounts if ':/workspace:' in item))
+output = Path(next(item.split(':', 1)[0] for item in mounts if ':/output:' in item))
+(worktree / 'app.txt').write_text('after\\n')
+(output / 'result.json').write_text(json.dumps({'summary': 'synthetic patch applied', 'tests': [{'name': 'synthetic', 'status': 'passed'}]}))
+(output / 'test.log').write_text('synthetic test passed\\n')
+(output / 'analysis.md').write_text('synthetic analysis\\n')
+print(json.dumps({'argv': args}))
+""")
+        self.launcher.chmod(0o755)
+        self.config = {
+            "allowed_roots": [str(self.root)], "repos": {"synthetic-repo": {"path": str(self.repo)}}, "services": [],
+            "execution_state_file": str(Path(self.temp.name) / "executor-state.json"),
+            "executor_profiles": {"research-patch-test": {
+                "description": "Synthetic fixed patch-and-test profile", "repository_id": "synthetic-repo", "base_revision": "HEAD",
+                "podman_executable": str(self.launcher), "image": "synthetic-image", "container_argv": ["/fixed-synthetic-launcher"],
+                "disposable_worktree_root": str(self.worktrees), "task_output_root": str(self.outputs),
+                "credential_profile_id": "none", "network_policy_id": "none", "environment": {"PATH": os.environ["PATH"]},
+                "timeout_seconds": 10, "max_transcript_bytes": 4096, "max_result_bytes": 4096, "max_artifact_bytes": 4096,
+                "max_concurrent": 1, "cooldown_seconds": 0, "allowed_task_spec_ids": ["patch-and-test"],
+                "pids_limit": 32, "memory_limit": "128m", "cpus": 0.5
+            }}
+        }
+
+    def tearDown(self): self.temp.cleanup()
+
+    def test_synthetic_executor_is_fixed_isolated_and_reviewable(self):
+        policy = AgentPolicy(self.config)
+        execution_id = "11111111-1111-4111-8111-111111111111"
+        result = policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "Change the synthetic fixture only."}, execution_id)
+        self.assertEqual(result["state"], "SUCCEEDED")
+        self.assertEqual((self.repo / "app.txt").read_text(), "before\n")
+        self.assertFalse((self.worktrees / execution_id).exists())
+        self.assertTrue((self.outputs / execution_id / "patch.diff").is_file())
+        self.assertFalse((self.outputs / execution_id / "brief.txt").exists())
+        self.assertEqual({item["name"] for item in result["artifacts"]}, {"patch.diff", "result.json", "test.log", "analysis.md"})
+        invocation = json.loads(result["stdout"])["argv"]
+        self.assertIn("--network", invocation); self.assertEqual(invocation[invocation.index("--network") + 1], "none")
+        self.assertIn("--read-only", invocation); self.assertIn("--pids-limit", invocation); self.assertIn("--memory", invocation); self.assertIn("--cpus", invocation)
+        self.assertNotIn("Change the synthetic fixture only.", result["stdout"])
+        self.assertEqual(policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "different text is ignored after delivery"}, execution_id), result)
+        resources = policy.resources()["executor_profiles"]
+        self.assertEqual(resources, [{"executor_profile_id": "research-patch-test", "description": "Synthetic fixed patch-and-test profile", "repository_id": "synthetic-repo", "allowed_task_spec_ids": ["patch-and-test"]}])
+        self.assertNotIn(str(self.launcher), json.dumps(resources))
+
+    def test_executor_rejects_client_control_and_unavailable_profile(self):
+        policy = AgentPolicy(self.config)
+        execution_id = "22222222-2222-4222-8222-222222222222"
+        with self.assertRaisesRegex(PolicyError, "invalid"):
+            policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "x", "argv": ["/bin/sh"]}, execution_id)
+        with self.assertRaisesRegex(PolicyError, "not registered"):
+            policy.execute("start_registered_executor_task", {"executor_profile_id": "unknown", "task_spec_id": "patch-and-test", "brief": "x"}, execution_id)
+        with self.assertRaisesRegex(PolicyError, "invalid"):
+            policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "anything-else", "brief": "x"}, execution_id)
+        with patch("relayme.agent.os.geteuid", return_value=0), self.assertRaisesRegex(PolicyError, "root"):
+            policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "x"}, execution_id)
+
+    def test_opaque_credential_profile_is_local_only_and_cannot_use_allowed_root(self):
+        invalid = json.loads(json.dumps(self.config))
+        invalid["executor_profiles"]["research-patch-test"]["credential_profile_id"] = "synthetic-secret"
+        invalid["executor_credential_profiles"] = {"synthetic-secret": {"secret_file": str(self.root / "not-secret"), "mount_path": "/run/secrets/value", "environment_variable": "SYNTHETIC_TOKEN"}}
+        (self.root / "not-secret").write_text("not-a-real-secret"); (self.root / "not-secret").chmod(0o600)
+        with self.assertRaisesRegex(ValueError, "not protected"): AgentPolicy(invalid)
+
+
 class ControllerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.store = Store(str(Path(self.temp.name) / "db.sqlite"))
@@ -297,7 +381,7 @@ class ControllerTests(unittest.TestCase):
         self.call("POST", "/v1/agent/heartbeat", {"metadata": {"agent_version": "0.2.0", "resources": {"services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"]}}}, token=agent["credential"], agent=agent["host_id"])
         token = self.store.create_client("reader", {"hosts": [agent["host_id"]], "capabilities": ["list_hosts", "list_host_resources"]}, None)
         resources = self.call("GET", "/v1/hosts/" + agent["host_id"] + "/resources", token=token)["resources"]
-        self.assertEqual(resources, {"host_id": agent["host_id"], "hostname": "example-host", "services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"], "registered_tasks": []})
+        self.assertEqual(resources, {"host_id": agent["host_id"], "hostname": "example-host", "services": ["example.service"], "repositories": ["example-app"], "allowed_file_roots": ["/srv/example-app"], "registered_tasks": [], "executor_profiles": []})
         self.assertNotIn("resources", self.call("GET", "/v1/hosts", token=token)["hosts"][0]["metadata"])
 
     def test_hostname_and_host_id_resolve_immediately_for_tasks(self):
@@ -329,6 +413,31 @@ class ControllerTests(unittest.TestCase):
         self.assertIsNotNone(self.store.next_task(agent["host_id"], 0))
         self.assertTrue(self.store.finish_task(agent["host_id"], task, "FAILED", None, {"code": "file_outside_allowed_roots", "message": "path is outside allowed roots"}))
         self.assertEqual(self.store.task(task)["error"], {"code": "file_outside_allowed_roots", "message": "path is outside allowed roots"})
+
+    def test_executor_requires_exact_scope_and_retains_reviewable_result(self):
+        agent = self.enroll(metadata={"resources": {"executor_profiles": [{"executor_profile_id": "research-patch-test", "description": "synthetic", "repository_id": "synthetic-repo", "allowed_task_spec_ids": ["patch-and-test"]}]}})
+        denied = self.store.create_client("reader", {"hosts": [agent["host_id"]], "capabilities": ["run_registered_task:research-patch-test"]}, None)
+        body = {"host": agent["host_id"], "capability": "start_registered_executor_task", "arguments": {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "Synthetic change only.", "idempotency_key": "stable-key"}}
+        with self.assertRaises(HTTPError) as rejected: self.call("POST", "/v1/tasks", body, denied)
+        self.assertEqual(rejected.exception.code, 403); rejected.exception.close()
+        token = self.store.create_client("executor", {"hosts": [agent["host_id"]], "capabilities": ["run_executor_task:research-patch-test"]}, None)
+        first = self.call("POST", "/v1/tasks", body, token)["task_id"]
+        self.assertEqual(self.call("POST", "/v1/tasks", body, token)["task_id"], first)
+        delivered = self.call("GET", "/v1/agent/tasks/next?wait_seconds=0", token=agent["credential"], agent=agent["host_id"])["task"]
+        self.assertEqual(delivered["task_id"], first)
+        result = {"execution_id": first, "task_id": first, "task_identity": "profile-hash", "state": "SUCCEEDED", "exit_code": 0, "duration_ms": 5, "timeout_seconds": 10, "stdout": "", "stderr": "", "stdout_bytes": 0, "stderr_bytes": 0, "stdout_truncated": False, "stderr_truncated": False, "stdout_hash": "a", "stderr_hash": "b", "terminating_signal": None, "executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "reviewable": True, "artifacts": [{"name": "patch.diff", "sha256": "c"}]}
+        self.assertTrue(self.store.finish_task(agent["host_id"], first, "SUCCEEDED", result, None))
+        self.assertEqual(self.call("GET", "/v1/tasks/" + first + "/result", token)["result"], result)
+        reviewable = self.call("GET", "/v1/reviewable-tasks", token)["tasks"]
+        self.assertEqual(reviewable[0]["task_id"], first)
+        self.assertEqual(reviewable[0]["executor_profile_id"], "research-patch-test")
+
+    def test_executor_rejects_any_client_selected_execution_surface(self):
+        agent = self.enroll()
+        token = self.store.create_client("executor", {"hosts": [agent["host_id"]], "capabilities": ["run_executor_task:research-patch-test"]}, None)
+        body = {"host": agent["host_id"], "capability": "start_registered_executor_task", "arguments": {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "x", "environment": {"SECRET": "x"}}}
+        with self.assertRaises(HTTPError) as rejected: self.call("POST", "/v1/tasks", body, token)
+        self.assertEqual(rejected.exception.code, 400); rejected.exception.close()
 
 
 class LocalAdminTests(unittest.TestCase):
