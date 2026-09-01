@@ -59,8 +59,9 @@
     "Added Agent-local executor profiles for fixed repository/base, disposable worktree/output roots, rootless Podman network-none sandbox defaults, resource/output bounds, and opaque local credential/network profile references without provider-specific Core logic",
     "Added owner-scoped executor task state/result/review queries through the HTTP API, CLI, and generic MCP adapter; resource discovery exposes only safe profile metadata",
     "Validated a synthetic research-patch-test profile: disposable-worktree-only change, bounded review artifacts, source repository preservation, and no rerun on replay; base regression suite passed with 52 tests (the optional MCP-SDK test is skipped in that interpreter), while a clean MCP-enabled environment passed all MCP adapter tests plus v0.4.0 install/wheel/CLI and 12-tool MCP construction",
-    "Added the sole Agent-local non-default executor user namespace mode, keep-id: it emits a fixed Podman option, cannot be selected by clients or briefs, defaults to prior behavior when omitted, and passed the 54-test local regression suite; real-host non-provider reacceptance is pending"
+    "Added the sole Agent-local non-default executor user namespace mode, keep-id: it emits a fixed Podman option, cannot be selected by clients or briefs, defaults to prior behavior when omitted, and passed the 54-test local regression suite",
+    "Repeated non-provider real-host executor acceptance with the local keep-id profile: the task reached RUNNING but retained the same disposable-worktree write denial; RelayMe-only result/replay/review checks confirmed no second execution and no source-repository change, with no workaround, provider access, or post-boundary SSH repair"
   ],
-  "current_work": "v0.4 executor-task bridge is locally accepted; the narrow keep-id rootless bind-mount correction awaits repeat real-host non-provider acceptance",
-  "next_action": "Repeat the isolated non-provider rootless-Podman executor acceptance with the fixed Agent-local keep-id profile"
+  "current_work": "v0.4 executor-task bridge is locally accepted but real-host non-provider acceptance remains blocked by rootless container UID/bind-mount ownership despite fixed keep-id policy",
+  "next_action": "Investigate rootless Podman UID/GID mapping evidence before authorizing any additional sandbox policy change; do not begin provider-enabled executor testing"
 }
