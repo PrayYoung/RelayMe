@@ -10,6 +10,8 @@ R1 is not shell access. For a normal registered task, the client selects only a 
 
 `start_registered_executor_task` is a fixed `patch-and-test` profile, not a general job runner. The client supplies only a host, registered executor profile ID, the literal task spec ID `patch-and-test`, a bounded untrusted brief, and an optional idempotency key. The Agent resolves the repository/base revision, disposable Git worktree, rootless Podman sandbox, bounded artifact paths, and opaque local credential/network profile references. Provider credentials, provider destinations, and proxy policy stay deployment-local and are never interpreted by RelayMe Core.
 
+An Agent-local executor profile may opt into the sole supported non-default user-namespace mode, `user_namespace: "keep-id"`. RelayMe emits the fixed `--userns=keep-id` Podman setting; clients and briefs cannot select or alter it. Profiles that omit the field retain the default namespace behavior.
+
 For an idempotency key, RelayMe atomically reuses the original execution. Its bounded result remains replayable for a short retention period; after expiry RelayMe returns stable execution metadata with a `result_expired` state and never runs the task again.
 
 ## Local demo

@@ -58,8 +58,9 @@
     "Added v0.4 start_registered_executor_task for the single fixed patch-and-test specification with exact executor-profile scopes, a bounded untrusted brief, and optional idempotency",
     "Added Agent-local executor profiles for fixed repository/base, disposable worktree/output roots, rootless Podman network-none sandbox defaults, resource/output bounds, and opaque local credential/network profile references without provider-specific Core logic",
     "Added owner-scoped executor task state/result/review queries through the HTTP API, CLI, and generic MCP adapter; resource discovery exposes only safe profile metadata",
-    "Validated a synthetic research-patch-test profile: disposable-worktree-only change, bounded review artifacts, source repository preservation, and no rerun on replay; base regression suite passed with 52 tests (the optional MCP-SDK test is skipped in that interpreter), while a clean MCP-enabled environment passed all MCP adapter tests plus v0.4.0 install/wheel/CLI and 12-tool MCP construction"
+    "Validated a synthetic research-patch-test profile: disposable-worktree-only change, bounded review artifacts, source repository preservation, and no rerun on replay; base regression suite passed with 52 tests (the optional MCP-SDK test is skipped in that interpreter), while a clean MCP-enabled environment passed all MCP adapter tests plus v0.4.0 install/wheel/CLI and 12-tool MCP construction",
+    "Added the sole Agent-local non-default executor user namespace mode, keep-id: it emits a fixed Podman option, cannot be selected by clients or briefs, defaults to prior behavior when omitted, and passed the 54-test local regression suite; real-host non-provider reacceptance is pending"
   ],
-  "current_work": "v0.4 executor-task bridge is locally accepted with a synthetic profile; real executor profiles, credentials, network bridges, images, and task policy remain deployment-local and untracked",
-  "next_action": "Perform one deployment-local rootless-Podman executor acceptance using a non-provider synthetic profile before registering any provider-enabled task"
+  "current_work": "v0.4 executor-task bridge is locally accepted; the narrow keep-id rootless bind-mount correction awaits repeat real-host non-provider acceptance",
+  "next_action": "Repeat the isolated non-provider rootless-Podman executor acceptance with the fixed Agent-local keep-id profile"
 }

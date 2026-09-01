@@ -154,8 +154,10 @@ class AgentPolicy:
         if not isinstance(raw, dict): raise ValueError("executor_profiles must be an object")
         profiles: dict[str, dict[str, Any]] = {}
         required = {"description", "repository_id", "base_revision", "podman_executable", "image", "container_argv", "disposable_worktree_root", "task_output_root", "credential_profile_id", "network_policy_id", "environment", "timeout_seconds", "max_transcript_bytes", "max_result_bytes", "max_artifact_bytes", "max_concurrent", "cooldown_seconds", "allowed_task_spec_ids", "pids_limit", "memory_limit", "cpus"}
+        optional = {"user_namespace"}
         for profile_id, value in raw.items():
-            if not isinstance(profile_id, str) or not profile_id or not isinstance(value, dict) or set(value) != required: raise ValueError("invalid executor profile")
+            if not isinstance(profile_id, str) or not profile_id or not isinstance(value, dict) or not required <= set(value) or set(value) - required - optional: raise ValueError("invalid executor profile")
+            value = {**value, "user_namespace": value.get("user_namespace", "none")}
             if value["repository_id"] not in self.repos or value["allowed_task_spec_ids"] != ["patch-and-test"]: raise ValueError("executor profile has unsupported repository or task spec")
             if not all(isinstance(value[key], str) and value[key] for key in ("description", "base_revision", "podman_executable", "image", "credential_profile_id", "network_policy_id", "memory_limit")): raise ValueError("invalid executor profile metadata")
             if not Path(value["podman_executable"]).is_absolute() or not isinstance(value["container_argv"], list) or not value["container_argv"] or not all(isinstance(part, str) and part for part in value["container_argv"]): raise ValueError("executor launcher must be fixed")
@@ -167,6 +169,7 @@ class AgentPolicy:
             for key, low, high in (("timeout_seconds", 1, 3600), ("max_transcript_bytes", 1, MAX_EXECUTION_STREAM_BYTES), ("max_result_bytes", 256, 262144), ("max_artifact_bytes", 1, MAX_FILE_BYTES), ("max_concurrent", 1, 1), ("cooldown_seconds", 0, 86400), ("pids_limit", 1, 256)):
                 if not isinstance(value[key], int) or not low <= value[key] <= high: raise ValueError("invalid executor limit")
             if not isinstance(value["cpus"], (int, float)) or not 0 < float(value["cpus"]) <= 8: raise ValueError("invalid executor cpu limit")
+            if value["user_namespace"] not in {"none", "keep-id"}: raise ValueError("unsupported executor user namespace")
             if value["credential_profile_id"] != "none" and value["credential_profile_id"] not in self.executor_credentials: raise ValueError("executor credential profile is unavailable")
             if value["network_policy_id"] != "none" and value["network_policy_id"] not in self.executor_networks: raise ValueError("executor network profile is unavailable")
             profiles[profile_id] = {**value, "worktree_root": str(worktree_root), "output_root": str(output_root), "task_identity": hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()}
@@ -352,6 +355,7 @@ class AgentPolicy:
                 base_revision = base.stdout.decode().strip()
                 subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(worktree), base_revision], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=60); created = True
                 command = [profile["podman_executable"], "run", "--rm", "--name", name, "--network", "none", "--read-only", "--pids-limit", str(profile["pids_limit"]), "--memory", profile["memory_limit"], "--cpus", str(profile["cpus"]), "--workdir", "/workspace", "-v", str(worktree) + ":/workspace:rw", "-v", str(task_output) + ":/output:rw", "-v", str(brief_path) + ":/input/brief.txt:ro"]
+                if profile["user_namespace"] == "keep-id": command.append("--userns=keep-id")
                 credential_id = profile["credential_profile_id"]
                 if credential_id != "none":
                     credential = self.executor_credentials[credential_id]

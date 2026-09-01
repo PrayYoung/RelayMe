@@ -55,11 +55,12 @@ v0.4 registered executor-task bridge is locally validated with a synthetic, non-
 - Added Agent-local executor profiles with fixed repository/base revision, disposable worktree/output roots, rootless Podman invocation, `--network none`, read-only sandbox defaults, resource limits, bounded transcripts/artifacts, and opaque local credential/network profile references. No provider hostname, credential value, or provider-specific logic is present in RelayMe Core.
 - Added owner-scoped executor task state/result/review queries to the Controller, CLI, and generic MCP adapter. Discovery exposes only safe profile metadata.
 - Validated the synthetic `research-patch-test` acceptance profile: a fixed fake Podman launcher changed only a disposable Git worktree, produced bounded review artifacts, preserved the source repository, and confirmed replay does not rerun the execution. The full base suite passed (52 tests; its optional MCP-SDK test is skipped in the base interpreter); a clean MCP-enabled environment passed all MCP adapter tests, package install, wheel build, CLI entry points, and 12-tool MCP server construction.
+- Added a narrow v0.4 Agent-local `user_namespace: keep-id` executor policy. It is the only supported non-default user-namespace value, emits one fixed Podman argument, is unavailable to clients/briefs, and defaults to prior behavior when omitted. Local regression passed with 54 tests; real-host reacceptance is pending.
 
 ## Current work
 
-- v0.4 executor-task bridge implementation is complete and locally accepted with a synthetic profile. Real executor profiles, credentials, egress bridges, sandbox images, and task policies remain deployment-local and require separate real-host acceptance.
+- v0.4 executor-task bridge is locally accepted. The narrow `keep-id` rootless bind-mount correction is implemented and awaiting repeat real-host non-provider acceptance.
 
 ## Next action
 
-- Perform one deployment-local rootless-Podman executor acceptance using a non-provider synthetic profile before any provider-enabled task is registered.
+- Repeat the isolated non-provider rootless-Podman executor acceptance with the fixed Agent-local `keep-id` profile.

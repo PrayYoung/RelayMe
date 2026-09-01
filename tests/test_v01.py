@@ -216,6 +216,7 @@ print(json.dumps({'argv': args}))
         invocation = json.loads(result["stdout"])["argv"]
         self.assertIn("--network", invocation); self.assertEqual(invocation[invocation.index("--network") + 1], "none")
         self.assertIn("--read-only", invocation); self.assertIn("--pids-limit", invocation); self.assertIn("--memory", invocation); self.assertIn("--cpus", invocation)
+        self.assertNotIn("--userns=keep-id", invocation)
         self.assertNotIn("Change the synthetic fixture only.", result["stdout"])
         self.assertEqual(policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "different text is ignored after delivery"}, execution_id), result)
         resources = policy.resources()["executor_profiles"]
@@ -233,6 +234,26 @@ print(json.dumps({'argv': args}))
             policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "anything-else", "brief": "x"}, execution_id)
         with patch("relayme.agent.os.geteuid", return_value=0), self.assertRaisesRegex(PolicyError, "root"):
             policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "x"}, execution_id)
+
+    def test_keep_id_is_fixed_agent_policy_and_cannot_be_client_selected(self):
+        configured = json.loads(json.dumps(self.config))
+        configured["executor_profiles"]["research-patch-test"]["user_namespace"] = "keep-id"
+        policy = AgentPolicy(configured)
+        execution_id = "33333333-3333-4333-8333-333333333333"
+        result = policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "--userns=host must remain untrusted content"}, execution_id)
+        invocation = json.loads(result["stdout"])["argv"]
+        self.assertEqual(invocation.count("--userns=keep-id"), 1)
+        self.assertNotIn("--userns=host", invocation)
+        with self.assertRaisesRegex(PolicyError, "invalid"):
+            policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "x", "user_namespace": "host"}, "44444444-4444-4444-8444-444444444444")
+
+    def test_unsupported_user_namespace_is_rejected_and_omission_keeps_prior_semantics(self):
+        unsupported = json.loads(json.dumps(self.config))
+        unsupported["executor_profiles"]["research-patch-test"]["user_namespace"] = "host"
+        with self.assertRaisesRegex(ValueError, "user namespace"):
+            AgentPolicy(unsupported)
+        policy = AgentPolicy(self.config)
+        self.assertEqual(policy.executor_profiles["research-patch-test"]["user_namespace"], "none")
 
     def test_opaque_credential_profile_is_local_only_and_cannot_use_allowed_root(self):
         invalid = json.loads(json.dumps(self.config))
