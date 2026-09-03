@@ -217,6 +217,7 @@ print(json.dumps({'argv': args}))
         self.assertIn("--network", invocation); self.assertEqual(invocation[invocation.index("--network") + 1], "none")
         self.assertIn("--read-only", invocation); self.assertIn("--pids-limit", invocation); self.assertIn("--memory", invocation); self.assertIn("--cpus", invocation)
         self.assertNotIn("--userns=keep-id", invocation)
+        self.assertNotIn("--user", invocation)
         self.assertNotIn("Change the synthetic fixture only.", result["stdout"])
         self.assertEqual(policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "different text is ignored after delivery"}, execution_id), result)
         resources = policy.resources()["executor_profiles"]
@@ -247,6 +248,22 @@ print(json.dumps({'argv': args}))
         with self.assertRaisesRegex(PolicyError, "invalid"):
             policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "x", "user_namespace": "host"}, "44444444-4444-4444-8444-444444444444")
 
+    def test_agent_execution_identity_is_fixed_local_and_cannot_be_client_selected(self):
+        configured = json.loads(json.dumps(self.config))
+        profile = configured["executor_profiles"]["research-patch-test"]
+        profile["user_namespace"] = "keep-id"
+        profile["execution_identity"] = "agent"
+        policy = AgentPolicy(configured)
+        execution_id = "55555555-5555-4555-8555-555555555555"
+        with patch("relayme.agent.os.geteuid", return_value=4242), patch("relayme.agent.os.getegid", return_value=4343):
+            result = policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "--user 0:0 --privileged must remain inert"}, execution_id)
+        invocation = json.loads(result["stdout"])["argv"]
+        self.assertEqual(invocation[invocation.index("--userns=keep-id") + 1], "--user")
+        self.assertEqual(invocation[invocation.index("--user") + 1], "4242:4343")
+        self.assertNotIn("--privileged", invocation)
+        with self.assertRaisesRegex(PolicyError, "invalid"):
+            policy.execute("start_registered_executor_task", {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "x", "execution_identity": "agent"}, "66666666-6666-4666-8666-666666666666")
+
     def test_unsupported_user_namespace_is_rejected_and_omission_keeps_prior_semantics(self):
         unsupported = json.loads(json.dumps(self.config))
         unsupported["executor_profiles"]["research-patch-test"]["user_namespace"] = "host"
@@ -254,6 +271,21 @@ print(json.dumps({'argv': args}))
             AgentPolicy(unsupported)
         policy = AgentPolicy(self.config)
         self.assertEqual(policy.executor_profiles["research-patch-test"]["user_namespace"], "none")
+        self.assertEqual(policy.executor_profiles["research-patch-test"]["execution_identity"], "image")
+
+    def test_unsupported_or_unpaired_execution_identity_is_rejected(self):
+        unsupported = json.loads(json.dumps(self.config))
+        unsupported["executor_profiles"]["research-patch-test"]["execution_identity"] = "1000:1000 --privileged"
+        with self.assertRaisesRegex(ValueError, "execution identity"):
+            AgentPolicy(unsupported)
+        malformed = json.loads(json.dumps(self.config))
+        malformed["executor_profiles"]["research-patch-test"]["execution_identity"] = ["agent"]
+        with self.assertRaisesRegex(ValueError, "execution identity"):
+            AgentPolicy(malformed)
+        unpaired = json.loads(json.dumps(self.config))
+        unpaired["executor_profiles"]["research-patch-test"]["execution_identity"] = "agent"
+        with self.assertRaisesRegex(ValueError, "requires keep-id"):
+            AgentPolicy(unpaired)
 
     def test_opaque_credential_profile_is_local_only_and_cannot_use_allowed_root(self):
         invalid = json.loads(json.dumps(self.config))

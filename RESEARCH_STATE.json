@@ -1,0 +1,79 @@
+{
+  "project": {
+    "name": "RelayMe",
+    "updated_at": "2026-09-02T00:00:00-07:00"
+  },
+  "active_question": {
+    "id": "rootless-podman-agent-identity-20260902",
+    "title": "Validate a fixed Agent-local executor identity with keep-id",
+    "status": "answered",
+    "summary": "The fixed Agent-local execution identity paired with keep-id made both protected registered mounts writable while preserving rootless, non-root, no-network isolation."
+  },
+  "current_hypothesis": {
+    "id": "agent-identity-with-keep-id",
+    "statement": "A fixed Agent-local execution identity paired with keep-id will make both registered worktree and protected output mounts writable while preserving non-root rootless isolation.",
+    "falsifiable": true,
+    "frozen_at": "2026-09-02T00:00:00-07:00",
+    "success_criteria": [
+      "The generated Podman argv contains only the derived Agent UID:GID when the registered profile selects the sole approved identity mode.",
+      "The isolated acceptance retains all four expected artifacts, reports a non-root container identity, and leaves no source/worktree/container residue."
+    ],
+    "failure_criteria": [
+      "Either registered bind mount remains unwritable under the derived Agent identity.",
+      "Validation requires privileged containers, rootful Podman, provider access, or unbounded Podman options."
+    ],
+    "primary_metrics": [
+      "derived execution UID/GID",
+      "container-visible mount ownership and write outcomes",
+      "artifact retention and idempotent replay"
+    ],
+    "baseline_refs": [
+      "7ef87134c6f66c1ee0cfd4f78e5cefb867f139fc",
+      "74b8599a05cc729a281a707e965b77a13c91e356",
+      "real-host executor failure: disposable worktree permission denied"
+    ]
+  },
+  "active_experiment": {
+    "id": "agent-identity-acceptance-20260902",
+    "purpose": "Validate the fixed Agent-local identity policy in the existing isolated rootless executor acceptance fixture.",
+    "design": "Add one literal Agent-local identity mode accepted only with keep-id, prove fixed argv derivation locally, then repeat the one registered no-network patch-and-test acceptance with a fresh idempotency key.",
+    "backend": "existing RelayMe test host rootless Podman",
+    "state": "completed",
+    "job_ref": "deployment-local forensic probe",
+    "output_ref": "deployment-local sanitized acceptance evidence summary",
+    "submitted_at": "2026-09-02T00:00:00-07:00",
+    "last_checked_at": "2026-09-02T00:00:00-07:00",
+    "started_at": "2026-09-02T00:00:00-07:00",
+    "started_at": "2026-09-02T00:00:00-07:00"
+  },
+  "findings": [
+    {
+      "id": "keep-id-image-identity-mismatch",
+      "summary": "With keep-id, Agent-owned mounts are visible as the Agent numeric identity while the image process remains a different primary identity. Protected output writes fail; the current group-writable disposable worktree and existing test file remain writable through a supplementary Agent group.",
+      "evidence": [
+        "Both namespace-map forms were captured from inside the container and from a live keep-id container.",
+        "Fresh ordinary and disposable-worktree probes used network none, a read-only root filesystem, no provider material, and confirmed the existing fixed test file behavior.",
+        "All temporary containers, worktrees, and outputs were removed."
+      ],
+      "classification": "identity-mapping",
+      "recorded_at": "2026-09-02T00:00:00-07:00"
+    },
+    {
+      "id": "agent-identity-acceptance-pass",
+      "summary": "The fixed Agent-local identity mode paired with keep-id produced the Agent identity inside the rootless container and made both protected mounts writable without adding privilege, network, or client authority.",
+      "evidence": [
+        "Local regression rejects unsupported, unpaired, client-supplied, and brief-supplied identity controls.",
+        "The isolated real-host fixed task retained all bounded review artifacts, preserved the source repository, cleaned its worktree/container, and replayed the retained result.",
+        "No provider credential, provider egress, or production resource was used."
+      ],
+      "classification": "accepted-policy-correction",
+      "recorded_at": "2026-09-02T00:00:00-07:00"
+    }
+  ],
+  "candidate_next_experiments": [
+    {
+      "summary": "The isolated non-provider executor acceptance passed with the fixed Agent-local identity. Provider-enabled testing remains a separate, not-yet-authorized step.",
+      "priority": "deferred"
+    }
+  ]
+}

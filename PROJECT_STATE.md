@@ -57,11 +57,14 @@ v0.4 registered executor-task bridge is locally validated with a synthetic, non-
 - Validated the synthetic `research-patch-test` acceptance profile: a fixed fake Podman launcher changed only a disposable Git worktree, produced bounded review artifacts, preserved the source repository, and confirmed replay does not rerun the execution. The full base suite passed (52 tests; its optional MCP-SDK test is skipped in the base interpreter); a clean MCP-enabled environment passed all MCP adapter tests, package install, wheel build, CLI entry points, and 12-tool MCP server construction.
 - Added a narrow v0.4 Agent-local `user_namespace: keep-id` executor policy. It is the only supported non-default user-namespace value, emits one fixed Podman argument, is unavailable to clients/briefs, and defaults to prior behavior when omitted. Local regression passed with 54 tests.
 - Repeated the non-provider real-host executor acceptance with the local `keep-id` profile. The task reached RUNNING but retained the same worktree write denial as before. RelayMe-only result/replay/review checks confirmed no second execution and no source-repository change. No workaround, provider access, or post-boundary SSH repair was performed. The deployment-local rootless UID/bind-mount mapping remains unresolved.
+- Completed a deployment-only rootless Podman mapping investigation using fresh no-network disposable probes. `keep-id` is active, but the fixed image UID/GID differs from the non-root Agent identity: Agent-owned mounts become visible as the Agent identity while the image process retains its fixed identity. This explains the protected output-mount denial; all forensic containers, worktrees, and outputs were removed. No RelayMe policy or source changed.
+- Added the sole Agent-local executor execution-identity mode, `execution_identity: "agent"`, valid only with `user_namespace: "keep-id"`. It derives the running non-root Agent UID/GID and emits one fixed Podman `--user` argument; client/brief numeric identities and arbitrary Podman options remain impossible.
+- Repeated the isolated real-host non-provider executor acceptance: protected worktree and output writes passed, the fixed patch-and-test completed with all review artifacts, rootless no-network/forbidden-path checks passed, the source repository remained unchanged, cleanup completed, and the exact idempotency replay returned the retained reviewable result without a second execution. No provider credential or egress was used.
 
 ## Current work
 
-- v0.4 executor-task bridge is locally accepted, but real-host non-provider acceptance remains blocked by rootless container UID/bind-mount ownership despite the fixed `keep-id` policy.
+- v0.4 executor-task bridge is locally and real-host accepted for the isolated non-provider profile, including fixed Agent-local identity alignment with rootless `keep-id`.
 
 ## Next action
 
-- Investigate the rootless Podman UID/GID mapping evidence before authorizing any additional sandbox policy change; do not begin provider-enabled executor testing.
+- Conduct a separately authorized provider-enabled executor acceptance only after reviewing the deployment-local provider credential and egress policy.
