@@ -30,6 +30,7 @@ TOOL_NAMES = (
     "get_task",
     "task_result",
     "list_reviewable_tasks",
+    "get_task_artifact",
 )
 
 TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
@@ -45,6 +46,7 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "get_task": {"description": "Get owner-scoped state and bounded metadata for a RelayMe task ID.", "parameters": {"task_id": str}},
     "task_result": {"description": "Get the retained bounded result for an owner-scoped terminal task ID.", "parameters": {"task_id": str}},
     "list_reviewable_tasks": {"description": "List the caller's terminal executor tasks with retained reviewable evidence.", "parameters": {}},
+    "get_task_artifact": {"description": "Get a retained artifact (e.g. patch.diff, result.json, test.log, analysis.md) for an owner-scoped terminal executor task.", "parameters": {"task_id": str, "artifact_name": str}},
 }
 
 
@@ -98,6 +100,7 @@ class ControllerClient:
     def get_task(self, task_id: str) -> dict[str, Any]: return self.request("GET", "/v1/tasks/" + task_id)
     def task_result(self, task_id: str) -> dict[str, Any]: return self.request("GET", "/v1/tasks/" + task_id + "/result")
     def reviewable_tasks(self) -> dict[str, Any]: return self.request("GET", "/v1/reviewable-tasks")
+    def task_artifact(self, task_id: str, artifact_name: str) -> dict[str, Any]: return self.request("GET", "/v1/tasks/" + task_id + "/artifacts/" + artifact_name)
 
     def run_task(self, host: str, capability: str, arguments: dict[str, Any]) -> dict[str, Any]:
         created = self.request("POST", "/v1/tasks", {"host": host, "capability": capability, "arguments": arguments})
@@ -131,6 +134,9 @@ class RelayMeMcpAdapter:
         if tool in {"get_task", "task_result"}:
             if set(arguments) != {"task_id"}: raise ValueError(f"{tool} accepts only task_id")
             return self._result(self.client.get_task(self._string(arguments, "task_id")) if tool == "get_task" else self.client.task_result(self._string(arguments, "task_id")))
+        if tool == "get_task_artifact":
+            if set(arguments) != {"task_id", "artifact_name"}: raise ValueError("get_task_artifact accepts only task_id and artifact_name")
+            return self._result(self.client.task_artifact(self._string(arguments, "task_id"), self._string(arguments, "artifact_name")))
         host = self._string(arguments, "host")
         if tool == "list_host_resources": return self._result(self.client.list_host_resources(host))
         if tool == "run_registered_task":
@@ -221,6 +227,9 @@ def create_mcp_server(adapter: RelayMeMcpAdapter):
 
     @server.tool(name="list_reviewable_tasks", description=TOOL_SCHEMAS["list_reviewable_tasks"]["description"])
     def list_reviewable_tasks() -> dict[str, Any]: return invoke("list_reviewable_tasks", {})
+
+    @server.tool(name="get_task_artifact", description=TOOL_SCHEMAS["get_task_artifact"]["description"])
+    def get_task_artifact(task_id: str, artifact_name: str) -> dict[str, Any]: return invoke("get_task_artifact", {"task_id": task_id, "artifact_name": artifact_name})
 
     return server
 

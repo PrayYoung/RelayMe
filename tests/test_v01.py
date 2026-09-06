@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import tempfile
@@ -491,6 +492,157 @@ class ControllerTests(unittest.TestCase):
         body = {"host": agent["host_id"], "capability": "start_registered_executor_task", "arguments": {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "x", "environment": {"SECRET": "x"}}}
         with self.assertRaises(HTTPError) as rejected: self.call("POST", "/v1/tasks", body, token)
         self.assertEqual(rejected.exception.code, 400); rejected.exception.close()
+
+    def test_executor_artifact_retrieval_success_and_metadata(self):
+        agent = self.enroll(metadata={"resources": {"executor_profiles": [{"executor_profile_id": "research-patch-test", "description": "synthetic", "repository_id": "synthetic-repo", "allowed_task_spec_ids": ["patch-and-test"]}]}})
+        token = self.store.create_client("executor", {"hosts": [agent["host_id"]], "capabilities": ["run_executor_task:research-patch-test"]}, None)
+        body = {"host": agent["host_id"], "capability": "start_registered_executor_task", "arguments": {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "Synthetic change only.", "idempotency_key": "k1"}}
+        task_id = self.call("POST", "/v1/tasks", body, token)["task_id"]
+        self.call("GET", "/v1/agent/tasks/next?wait_seconds=0", token=agent["credential"], agent=agent["host_id"])
+
+        output_dir = Path(self.temp.name) / "task-output" / task_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        patch_text = "--- a/synthetic.txt\n+++ b/synthetic.txt\n@@ -1 +1,2 @@\n synthetic\n+patched\n"
+        test_text = "sandbox_uid=1001\nnetwork_none=pass\nforbidden_paths=pass\n"
+        result_text = json.dumps({"summary": "synthetic test passed", "tests": [{"name": "t1", "status": "passed"}]})
+        analysis_text = "# Analysis\nCompleted successfully.\n"
+
+        (output_dir / "patch.diff").write_text(patch_text)
+        (output_dir / "test.log").write_text(test_text)
+        (output_dir / "result.json").write_text(result_text)
+        (output_dir / "analysis.md").write_text(analysis_text)
+
+        patch_bytes = patch_text.encode()
+        test_bytes = test_text.encode()
+        result_bytes = result_text.encode()
+        analysis_bytes = analysis_text.encode()
+
+        artifacts = [
+            {"name": "patch.diff", "type": "patch", "size": len(patch_bytes), "sha256": hashlib.sha256(patch_bytes).hexdigest(), "mime_type": "text/plain"},
+            {"name": "test.log", "type": "test-log", "size": len(test_bytes), "sha256": hashlib.sha256(test_bytes).hexdigest(), "mime_type": "text/plain"},
+            {"name": "result.json", "type": "result", "size": len(result_bytes), "sha256": hashlib.sha256(result_bytes).hexdigest(), "mime_type": "application/json"},
+            {"name": "analysis.md", "type": "analysis", "size": len(analysis_bytes), "sha256": hashlib.sha256(analysis_bytes).hexdigest(), "mime_type": "text/plain"},
+        ]
+
+        result = {
+            "execution_id": task_id, "task_id": task_id, "task_identity": "profile-hash", "state": "SUCCEEDED",
+            "exit_code": 0, "duration_ms": 5, "timeout_seconds": 10, "stdout": "", "stderr": "", "stdout_bytes": 0,
+            "stderr_bytes": 0, "stdout_truncated": False, "stderr_truncated": False, "stdout_hash": "a", "stderr_hash": "b",
+            "terminating_signal": None, "executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test",
+            "reviewable": True, "artifacts": artifacts, "output_directory": str(output_dir),
+            "suggested_reviewer_evidence": ["patch.diff", "result.json", "test.log", "analysis.md"],
+        }
+        self.assertTrue(self.store.finish_task(agent["host_id"], task_id, "SUCCEEDED", result, None))
+
+        # 1. Valid artifact reads
+        patch_res = self.call("GET", f"/v1/tasks/{task_id}/artifacts/patch.diff", token=token)
+        self.assertEqual(patch_res["task_id"], task_id)
+        self.assertEqual(patch_res["artifact_name"], "patch.diff")
+        self.assertEqual(patch_res["type"], "patch")
+        self.assertEqual(patch_res["size"], len(patch_bytes))
+        self.assertEqual(patch_res["sha256"], hashlib.sha256(patch_bytes).hexdigest())
+        self.assertEqual(patch_res["content"], patch_text)
+        self.assertFalse(patch_res["truncated"])
+        self.assertEqual(patch_res["bytes_returned"], len(patch_bytes))
+
+        test_res = self.call("GET", f"/v1/tasks/{task_id}/artifacts/test.log", token=token)
+        self.assertEqual(test_res["content"], test_text)
+        self.assertEqual(test_res["type"], "test-log")
+        self.assertFalse(test_res["truncated"])
+
+        analysis_res = self.call("GET", f"/v1/tasks/{task_id}/artifacts/analysis.md", token=token)
+        self.assertEqual(analysis_res["content"], analysis_text)
+
+        # 2. Admin can read
+        admin_res = self.call("GET", f"/v1/tasks/{task_id}/artifacts/patch.diff", token="admin")
+        self.assertEqual(admin_res["content"], patch_text)
+
+        # 3. Other client is rejected (403)
+        other_token = self.store.create_client("other", {"hosts": [agent["host_id"]], "capabilities": ["run_executor_task:research-patch-test"]}, None)
+        with self.assertRaises(HTTPError) as denied: self.call("GET", f"/v1/tasks/{task_id}/artifacts/patch.diff", token=other_token)
+        self.assertEqual(denied.exception.code, 403); denied.exception.close()
+
+        # 4. Missing task rejected (404)
+        with self.assertRaises(HTTPError) as missing_task: self.call("GET", "/v1/tasks/00000000-0000-0000-0000-000000000000/artifacts/patch.diff", token=token)
+        self.assertEqual(missing_task.exception.code, 404); missing_task.exception.close()
+
+        # 5. Undeclared artifact rejected (404)
+        with self.assertRaises(HTTPError) as undeclared: self.call("GET", f"/v1/tasks/{task_id}/artifacts/other.txt", token=token)
+        self.assertEqual(undeclared.exception.code, 404); undeclared.exception.close()
+
+        # 6. Missing file on disk rejected (404)
+        (output_dir / "analysis.md").unlink()
+        with self.assertRaises(HTTPError) as missing_file: self.call("GET", f"/v1/tasks/{task_id}/artifacts/analysis.md", token=token)
+        self.assertEqual(missing_file.exception.code, 404); missing_file.exception.close()
+
+        # 7. Path traversal rejected (400)
+        with self.assertRaises(HTTPError) as traversal: self.call("GET", f"/v1/tasks/{task_id}/artifacts/..%2Fpatch.diff", token=token)
+        self.assertEqual(traversal.exception.code, 400); traversal.exception.close()
+
+        # 8. Slashes rejected (400)
+        with self.assertRaises(HTTPError) as slashes: self.call("GET", f"/v1/tasks/{task_id}/artifacts/a%2Fb", token=token)
+        self.assertEqual(slashes.exception.code, 400); slashes.exception.close()
+
+        # 9. CLI task-artifact command
+        with patch.dict("os.environ", {"RELAYME_URL": self.url, "RELAYME_TOKEN": token}, clear=True), \
+             patch("sys.argv", ["relayme", "task-artifact", task_id, "patch.diff"]), \
+             patch("sys.stdout", new_callable=StringIO) as cli_out:
+            cli.main()
+        cli_result = json.loads(cli_out.getvalue())
+        self.assertEqual(cli_result["artifact_name"], "patch.diff")
+        self.assertEqual(cli_result["content"], patch_text)
+
+        # 10. Task lifecycle and idempotency replay unaffected
+        replay_id = self.call("POST", "/v1/tasks", body, token)["task_id"]
+        self.assertEqual(replay_id, task_id)
+        task_obj = self.call("GET", f"/v1/tasks/{task_id}", token)["task"]
+        self.assertEqual(task_obj["status"], "SUCCEEDED")
+
+    def test_executor_artifact_security_symlink_directory_and_truncation(self):
+        agent = self.enroll(metadata={"resources": {"executor_profiles": [{"executor_profile_id": "research-patch-test", "description": "synthetic", "repository_id": "synthetic-repo", "allowed_task_spec_ids": ["patch-and-test"]}]}})
+        token = self.store.create_client("executor", {"hosts": [agent["host_id"]], "capabilities": ["run_executor_task:research-patch-test"]}, None)
+        body = {"host": agent["host_id"], "capability": "start_registered_executor_task", "arguments": {"executor_profile_id": "research-patch-test", "task_spec_id": "patch-and-test", "brief": "Security tests", "idempotency_key": "k2"}}
+        task_id = self.call("POST", "/v1/tasks", body, token)["task_id"]
+        self.call("GET", "/v1/agent/tasks/next?wait_seconds=0", token=agent["credential"], agent=agent["host_id"])
+
+        output_dir = Path(self.temp.name) / "task-output" / task_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        outside_file = Path(self.temp.name) / "secret.txt"
+        outside_file.write_text("secret outside")
+        (output_dir / "patch.diff").symlink_to(outside_file)
+
+        (output_dir / "test.log").mkdir()
+
+        large_content = "X" * 150_000
+        (output_dir / "result.json").write_text(large_content)
+        large_bytes = large_content.encode()
+
+        artifacts = [
+            {"name": "patch.diff", "type": "patch", "size": 14, "sha256": "hash", "mime_type": "text/plain"},
+            {"name": "test.log", "type": "test-log", "size": 0, "sha256": "hash", "mime_type": "text/plain"},
+            {"name": "result.json", "type": "result", "size": len(large_bytes), "sha256": hashlib.sha256(large_bytes).hexdigest(), "mime_type": "application/json"},
+        ]
+        result = {
+            "execution_id": task_id, "task_id": task_id, "state": "SUCCEEDED", "exit_code": 0,
+            "duration_ms": 5, "timeout_seconds": 10, "executor_profile_id": "research-patch-test",
+            "task_spec_id": "patch-and-test", "reviewable": True, "artifacts": artifacts,
+            "output_directory": str(output_dir), "suggested_reviewer_evidence": ["patch.diff", "test.log", "result.json"],
+        }
+        self.assertTrue(self.store.finish_task(agent["host_id"], task_id, "SUCCEEDED", result, None))
+
+        with self.assertRaises(HTTPError) as symlink_err: self.call("GET", f"/v1/tasks/{task_id}/artifacts/patch.diff", token=token)
+        self.assertEqual(symlink_err.exception.code, 400); symlink_err.exception.close()
+
+        with self.assertRaises(HTTPError) as dir_err: self.call("GET", f"/v1/tasks/{task_id}/artifacts/test.log", token=token)
+        self.assertEqual(dir_err.exception.code, 400); dir_err.exception.close()
+
+        trunc_res = self.call("GET", f"/v1/tasks/{task_id}/artifacts/result.json", token=token)
+        self.assertTrue(trunc_res["truncated"])
+        self.assertEqual(trunc_res["size"], 150_000)
+        self.assertEqual(trunc_res["sha256"], hashlib.sha256(large_bytes).hexdigest())
+        self.assertEqual(trunc_res["bytes_returned"], 100_000)
+        self.assertEqual(len(trunc_res["content"]), 100_000)
 
 
 class LocalAdminTests(unittest.TestCase):

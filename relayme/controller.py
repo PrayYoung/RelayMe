@@ -7,6 +7,7 @@ import json
 import secrets
 import sqlite3
 import ssl
+import stat
 import threading
 import time
 import uuid
@@ -14,14 +15,16 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 R1_CAPABILITY = "run_registered_task"
 EXECUTOR_CAPABILITY = "start_registered_executor_task"
 PERSISTENT_CAPABILITIES = frozenset({R1_CAPABILITY, EXECUTOR_CAPABILITY})
 CAPABILITIES = frozenset({"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff", R1_CAPABILITY, EXECUTOR_CAPABILITY})
 TERMINAL = frozenset({"SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED", "AGENT_INTERRUPTED", "AGENT_LOST"})
+ALLOWED_ARTIFACT_NAMES = frozenset({"patch.diff", "result.json", "test.log", "analysis.md"})
 MAX_RESULT_BYTES = 1_000_000
+MAX_ARTIFACT_READ_BYTES = 100_000
 R1_RESULT_RETENTION_SECONDS = 3600
 
 
@@ -311,6 +314,68 @@ class Store:
                     values.append({"task_id": row["task_id"], "host_id": row["host_id"], "state": row["status"], "executor_profile_id": args.get("executor_profile_id"), "task_spec_id": args.get("task_spec_id"), "created_at": row["created_at"], "finished_at": row["finished_at"]})
             return values
 
+    def task_artifact(self, task_id: str, artifact_name: str, actor: str, administrator: bool, max_bytes: int = MAX_ARTIFACT_READ_BYTES) -> dict[str, Any]:
+        task = self.task(task_id)
+        if not task:
+            raise KeyError("task not found")
+        if task["actor"] != actor and not administrator:
+            raise PermissionError("task not visible")
+        if task.get("result_expired"):
+            raise FileNotFoundError("task result expired")
+        if task["status"] not in TERMINAL or task["capability"] != EXECUTOR_CAPABILITY:
+            raise FileNotFoundError("task artifact not available")
+        result = task.get("result")
+        if not isinstance(result, dict):
+            raise FileNotFoundError("task result missing")
+        if not isinstance(artifact_name, str) or not artifact_name or "/" in artifact_name or "\\" in artifact_name or ".." in artifact_name or "\0" in artifact_name or artifact_name.startswith(("/", "\\")):
+            raise ValueError("invalid artifact name")
+        if artifact_name not in ALLOWED_ARTIFACT_NAMES:
+            raise FileNotFoundError("artifact not declared in task manifest")
+        manifest_items = [item for item in result.get("artifacts", []) if isinstance(item, dict) and item.get("name") == artifact_name]
+        if not manifest_items:
+            raise FileNotFoundError("artifact not declared in task manifest")
+        manifest_item = manifest_items[0]
+        output_dir = result.get("output_directory") or result.get("task_output_root")
+        if not output_dir or not isinstance(output_dir, str):
+            raise FileNotFoundError("task output directory not recorded")
+        try:
+            base = Path(output_dir).resolve(strict=True)
+        except (OSError, RuntimeError):
+            raise FileNotFoundError("task output directory does not exist or cannot be resolved")
+        try:
+            target = (base / artifact_name).resolve(strict=True)
+        except (OSError, RuntimeError):
+            raise FileNotFoundError("artifact file does not exist")
+        if not target.is_relative_to(base):
+            raise ValueError("artifact path escapes output root")
+        mode = target.stat().st_mode
+        if not stat.S_ISREG(mode):
+            raise ValueError("artifact is not a regular file")
+        try:
+            with open(target, "rb") as f:
+                raw = f.read(max_bytes + 1)
+        except OSError as exc:
+            raise FileNotFoundError(f"cannot read artifact: {exc}")
+        actual_size = target.stat().st_size
+        truncated = actual_size > max_bytes
+        bounded_bytes = raw[:max_bytes]
+        content = bounded_bytes.decode("utf-8", "replace")
+        size = manifest_item.get("size", actual_size)
+        sha256 = manifest_item.get("sha256")
+        if not sha256:
+            sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
+        return {
+            "task_id": task_id,
+            "artifact_name": artifact_name,
+            "type": manifest_item.get("type", "artifact"),
+            "mime_type": manifest_item.get("mime_type", "application/json" if artifact_name.endswith(".json") else "text/plain"),
+            "size": size,
+            "sha256": sha256,
+            "content": content,
+            "truncated": truncated,
+            "bytes_returned": len(bounded_bytes),
+        }
+
 
 class Api(BaseHTTPRequestHandler):
     server: "ControllerServer"
@@ -408,12 +473,27 @@ class Api(BaseHTTPRequestHandler):
                 if not self.allowed(scopes, resolved["host_id"], "list_host_resources"): self.fail(403, "scope does not permit host resources")
                 self.reply(200, {"resources": self.server.store.resources(resolved)}); return
             if path.startswith("/v1/tasks/"):
-                if path.endswith("/result"):
-                    task = self.server.store.task(path.removesuffix("/result").rsplit("/", 1)[1])
+                rest = path.removeprefix("/v1/tasks/").strip("/")
+                if "/artifacts/" in rest or rest.endswith("/artifacts") or rest.startswith("artifacts/"):
+                    if "/artifacts/" in rest:
+                        task_id, artifact_name = rest.split("/artifacts/", 1)
+                        artifact_name = unquote(artifact_name)
+                    else:
+                        self.fail(400, "invalid artifact request", "invalid_artifact_request")
+                    try:
+                        artifact = self.server.store.task_artifact(task_id, artifact_name, actor, bool(scopes.get("admin")))
+                        self.reply(200, artifact); return
+                    except KeyError as exc: self.fail(404, str(exc), "task_not_found")
+                    except PermissionError as exc: self.fail(403, str(exc), "task_not_visible")
+                    except FileNotFoundError as exc: self.fail(404, str(exc), "artifact_not_found")
+                    except ValueError as exc: self.fail(400, str(exc), "invalid_artifact_request")
+                if rest.endswith("/result"):
+                    task_id = rest.removesuffix("/result").strip("/")
+                    task = self.server.store.task(task_id)
                     if not task: self.fail(404, "task not found")
                     if task["actor"] != actor and not scopes.get("admin"): self.fail(403, "task not visible")
                     self.reply(200, {"task_id": task["task_id"], "result": task.get("result"), "result_expired": task.get("result_expired", False)}); return
-                task = self.server.store.task(path.rsplit("/", 1)[1])
+                task = self.server.store.task(rest)
                 if not task: self.fail(404, "task not found")
                 if task["actor"] != actor and not scopes.get("admin"): self.fail(403, "task not visible")
                 self.reply(200, {"task": task}); return

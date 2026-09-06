@@ -27,7 +27,7 @@ class McpAdapterTests(unittest.TestCase):
         self.adapter = server.RelayMeMcpAdapter(server.ControllerClient(config, self.double))
 
     def test_exposes_exactly_the_r0_and_bounded_r1_tools_without_a_server_prefix(self):
-        self.assertEqual(set(server.TOOL_NAMES), {"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff", "run_registered_task", "start_registered_executor_task", "get_task", "task_result", "list_reviewable_tasks"})
+        self.assertEqual(set(server.TOOL_NAMES), {"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff", "run_registered_task", "start_registered_executor_task", "get_task", "task_result", "list_reviewable_tasks", "get_task_artifact"})
         self.assertEqual(set(server.TOOL_SCHEMAS), set(server.TOOL_NAMES))
         self.assertNotIn("relayme_list_hosts", server.TOOL_NAMES)
 
@@ -45,6 +45,7 @@ class McpAdapterTests(unittest.TestCase):
             ("get_task", {"task_id": "task-1"}, ("GET", "/v1/tasks/task-1", None)),
             ("task_result", {"task_id": "task-1"}, ("GET", "/v1/tasks/task-1/result", None)),
             ("list_reviewable_tasks", {}, ("GET", "/v1/reviewable-tasks", None)),
+            ("get_task_artifact", {"task_id": "task-1", "artifact_name": "patch.diff"}, ("GET", "/v1/tasks/task-1/artifacts/patch.diff", None)),
         ]
         for tool, arguments, expected in cases:
             with self.subTest(tool=tool):
@@ -73,6 +74,8 @@ class McpAdapterTests(unittest.TestCase):
             self.adapter.invoke("run_registered_task", {"host": "host-1", "task_id": "safe", "argv": ["evil"]})
         with self.assertRaisesRegex(ValueError, "only host"):
             self.adapter.invoke("start_registered_executor_task", {"host": "host-1", "executor_profile_id": "safe", "task_spec_id": "patch-and-test", "brief": "x", "argv": ["evil"]})
+        with self.assertRaisesRegex(ValueError, "only task_id and artifact_name"):
+            self.adapter.invoke("get_task_artifact", {"task_id": "task-1"})
 
     def test_missing_or_invalid_configuration_fails_clearly(self):
         with self.assertRaisesRegex(server.ConfigurationError, "RELAYME_URL"): server.AdapterConfig.from_env({})

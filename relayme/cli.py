@@ -55,6 +55,7 @@ def main() -> None:
     executor = commands.add_parser("start-executor-task"); executor.add_argument("host"); executor.add_argument("executor_profile_id"); executor.add_argument("task_spec_id"); executor.add_argument("brief"); executor.add_argument("--idempotency-key")
     reviewable = commands.add_parser("list-reviewable-tasks")
     result = commands.add_parser("task-result"); result.add_argument("task_id")
+    artifact = commands.add_parser("task-artifact"); artifact.add_argument("task_id"); artifact.add_argument("artifact_name")
     args = parser.parse_args()
     if not args.url or not args.token: parser.error("--url/RELAYME_URL and --token/RELAYME_TOKEN are required")
     if args.command in {"list-hosts", "hosts"}: value = call(args.url, args.token, "GET", "/v1/hosts", ca_cert=args.ca_cert)
@@ -74,6 +75,7 @@ def main() -> None:
         value = wait_for_task(args.url, args.token, created["task_id"], args.ca_cert, args.wait_seconds)
     elif args.command == "list-reviewable-tasks": value = call(args.url, args.token, "GET", "/v1/reviewable-tasks", ca_cert=args.ca_cert)
     elif args.command == "task-result": value = call(args.url, args.token, "GET", "/v1/tasks/" + args.task_id + "/result", ca_cert=args.ca_cert)
+    elif args.command == "task-artifact": value = call(args.url, args.token, "GET", "/v1/tasks/" + args.task_id + "/artifacts/" + args.artifact_name, ca_cert=args.ca_cert)
     else:
         if args.command == "status": host, capability, arguments = args.host, "host_status", {}
         elif args.command == "processes": host, capability, arguments = args.host, "process_list", {}
