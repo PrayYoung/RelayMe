@@ -170,3 +170,115 @@ relayme-mcp-remote \
 - **Integration Options**:
   - For current ChatGPT Web: RelayMe Controller's existing HTTP REST endpoints (`/v1/hosts`, `/v1/tasks`, `/v1/reviewable-tasks`) can be directly imported via an OpenAPI schema.
   - For upcoming ChatGPT Web remote MCP support: `relayme-mcp-remote`'s `/mcp` Streamable HTTP endpoint complies with the 2025 MCP specification.
+
+---
+
+## 6. OAuth 2.1 Edge — Web MCP Client Authentication (v0.6)
+
+Web-based MCP clients such as **Gemini Spark** and **Claude Web** require standards-compliant OAuth 2.1 authentication. They cannot use raw Bearer tokens in connector configuration. `relayme-mcp-oauth` provides a self-contained OAuth 2.1 authorization server edge that sits in front of the MCP endpoint, mapping OAuth-authenticated identities to the existing RelayMe bearer token model.
+
+### Architecture
+
+```
+Web Client (Claude Web / Gemini Spark)
+  ↓ OAuth 2.1 / PKCE Authorization Code Flow
+relayme-mcp-oauth   (http://localhost:8001 or public HTTPS via tunnel)
+  ├── /.well-known/oauth-protected-resource  ← RFC 9728 PRM (required by both clients)
+  ├── /.well-known/oauth-authorization-server ← RFC 8414 ASM
+  ├── /register   ← RFC 7591 DCR (legacy fallback; both clients still use it in practice)
+  ├── /authorize  ← PKCE S256 authorization code endpoint
+  ├── /token      ← opaque access token issuance + refresh rotation
+  ├── /revoke     ← RFC 7009
+  └── /mcp        ← inline MCP (identical 13-tool schema)
+        ↓ RelayMe bearer (resolved per-request from allowlist; never exposed to web client)
+   existing RelayMe Controller
+```
+
+**Security properties**:
+- RelayMe bearer tokens are **never returned** to web clients — only short-lived opaque access tokens
+- All tokens stored as SHA-256 hashes; cleartext never persisted to SQLite
+- PKCE S256 mandatory; `plain` method rejected
+- Explicit subject allowlist: `sub → relayme_token` (no wildcards, no auto-grant)
+
+### Quick Start
+
+**Step 1: Register a subject in the allowlist**
+
+```bash
+relayme-mcp-oauth add-client \
+  --sub user@example.com \
+  --token eUhC3WGp8azsCPufRf3loJfH9s9ApaVSfypUHjTBkY4 \
+  --label "Owner"
+```
+
+**Step 2: Start the OAuth edge**
+
+```bash
+# With Cloudflare Tunnel (recommended — establishes public HTTPS)
+cloudflared tunnel --url http://127.0.0.1:8001 &
+# Set the tunnel URL as the public base URL
+export RELAYME_OAUTH_BASE_URL=https://your-tunnel.trycloudflare.com
+export RELAYME_URL=https://100.x.y.z:18765
+export RELAYME_CA_CERT=~/.config/relayme/controller-ca.pem
+
+relayme-mcp-oauth serve \
+  --base-url "$RELAYME_OAUTH_BASE_URL" \
+  --controller-url "$RELAYME_URL" \
+  --ca-cert "$RELAYME_CA_CERT" \
+  --allow-http-insecure      # only for loopback; tunnel handles TLS termination
+```
+
+**Step 3: Add connector in Gemini Spark or Claude Web**
+
+Enter `https://your-tunnel.trycloudflare.com/mcp` as the MCP server URL.
+
+The client will:
+1. Hit `/mcp` → receive `401` with `WWW-Authenticate: Bearer resource_metadata=".../oauth-protected-resource"`
+2. Discover authorization server via PRM → ASM documents
+3. Register via `/register` (DCR)
+4. Run PKCE Authorization Code flow through `/authorize`
+5. Exchange code for opaque access token at `/token`
+6. Subsequent `/mcp` calls authenticated with the opaque token
+
+### Client Redirect URIs
+
+| Client | Redirect URI |
+|---|---|
+| Claude Web | `https://claude.ai/api/mcp/auth_callback` |
+| Gemini Spark | Shown in Gemini connector setup UI (varies) |
+
+These redirect URIs are sent by the client during DCR and automatically registered.
+
+### Management CLI Reference
+
+| Command | Description |
+|---|---|
+| `relayme-mcp-oauth serve` | Start the OAuth edge server |
+| `relayme-mcp-oauth add-client --sub <sub> --token <relay_bearer>` | Add subject to allowlist |
+| `relayme-mcp-oauth list-clients` | Show all allowlist entries |
+| `relayme-mcp-oauth revoke-client --sub <sub>` | Remove subject from allowlist |
+| `relayme-mcp-oauth list-tokens` | Show active (non-expired) access tokens |
+
+### Scope Support
+
+| Scope | Description |
+|---|---|
+| `relayme.read` | R0 observation and discovery tools |
+| `relayme.execute` | R1 bounded registered task execution |
+| `ACCESS_VIEW_MANAGE_MCP_CONTENT` | Required by Gemini Spark; automatically accepted |
+| `offline_access` | Required by Gemini Spark for refresh token issuance |
+
+### Development Mode
+
+For local testing without a browser, use `--dev-auto-approve-sub`:
+
+```bash
+relayme-mcp-oauth serve \
+  --base-url http://localhost:8001 \
+  --controller-url ... \
+  --dev-auto-approve-sub test-user@example.com \
+  --allow-http-insecure
+```
+
+> **Never use `--dev-auto-approve-sub` in production.** It bypasses the approval form and auto-grants any `/authorize` request with the specified subject.
+
