@@ -1,229 +1,92 @@
+<p align="center">
+  <img src="assets/relayme-mark.svg" width="72" alt="RelayMe Logo" />
+</p>
+
 # RelayMe
 
-**A secure execution plane for AI agents operating on remote machines.**
+**Give ChatGPT and other AI agents safe, persistent hands on remote machines — without arbitrary shell access.**
 
-AI coding and operations agents increasingly need to inspect, patch, test, and diagnose real systems. However, giving remote AI models arbitrary SSH access or raw shell execution (`run_shell`) is dangerous, fragile, and difficult to audit. Furthermore, ephemeral agent sessions make long-running tasks unreliable.
+AI agents need to act in the real world: inspect systems, run experiments, and execute bounded tasks. But giving remote models unrestricted shell or SSH access (`run_shell`) is dangerous, and ephemeral chat sessions make long-running work fragile.
 
-RelayMe bridges this gap by acting as a secure, vendor-neutral execution plane underneath AI orchestrators. Instead of arbitrary remote shell access, RelayMe provides:
-
-- **Capability-Scoped Authorization**: Clients execute only pre-authorized, explicitly registered task specifications.
-- **Durable Task Lifecycle**: SQLite-backed tasks with atomic idempotency, replayable results, and audit trails.
-- **Isolated Disposable Worktrees**: Code changes occur in transient Git worktrees, keeping source repositories immutable.
-- **Rootless Sandboxing**: Containerized execution via rootless Podman with `--network none`, read-only roots, and strict resource limits.
-- **Bounded Reviewable Artifacts**: Retained patches (`patch.diff`), test logs (`test.log`), and structured outcomes (`result.json`) for subsequent model review.
-- **Universal Client Interfaces**: Seamless parity across HTTP/REST, CLI, and FastMCP (Model Context Protocol).
-
----
-
-## What RelayMe Is NOT
-
-To keep system boundaries clear:
-
-- **NOT another coding agent**: RelayMe does not write code or prompt LLMs. Models like ChatGPT, Claude, Codex, or Antigravity act as external clients.
-- **NOT an orchestration engine**: RelayMe does not decide next steps, manage multi-agent loops, or direct research.
-- **NOT merely an MCP server**: FastMCP is an adapter interface; RelayMe's primary system is the execution, policy enforcement, and security layer underneath.
-- **NOT arbitrary remote shell access**: RelayMe strictly rejects arbitrary shell commands, raw interpreter evaluations, and ad-hoc script uploads.
-
----
-
-## Architecture
+RelayMe is a secure, vendor-neutral execution bridge. It lets AI agents observe remote machines, run registered bounded tasks in isolated sandboxes, and retrieve structured artifacts for review — safely, durably, and across session boundaries.
 
 ```mermaid
-flowchart TD
-    subgraph ExternalClients ["AI Clients & Operators"]
-        C1["ChatGPT / Claude"]
-        C2["Codex / Antigravity"]
-        C3["RelayMe CLI / Scripts"]
-    end
+flowchart LR
+    Agent["AI Agent\n(ChatGPT / Claude / Codex)"]
+    Relay["RelayMe\n(Safe & Durable Bridge)"]
+    Remote["Remote Machine\n(Isolated Sandbox)"]
+    Artifacts["Review Artifacts\n(Logs / Patches / Results)"]
 
-    subgraph Interfaces ["Client Interfaces"]
-        I1["HTTP / REST API"]
-        I2["relayme CLI"]
-        I3["FastMCP Adapter (stdio)"]
-    end
-
-    subgraph Core ["RelayMe Execution Plane"]
-        RC["RelayMe Controller\n• SQLite Task Persistence\n• Client Authentication\n• Owner-Scoped Audit"]
-        RA["RelayMe Host Agent\n• Outbound Long-Poll\n• Local Policy Enforcement\n• Disposable Worktree Lifecycle"]
-    end
-
-    subgraph Execution ["Sandboxed Execution Plane"]
-        EP["Registered Executor Profile\n(patch-and-test)"]
-        SB["Rootless Podman Sandbox\n• --network none\n• read-only rootfs\n• CPU/mem/PID limits"]
-        WT["Disposable Git Worktree\n(Isolated Scratch Copy)"]
-        AR["Retained Review Artifacts\n(patch.diff, test.log, result.json)"]
-    end
-
-    ExternalClients --> Interfaces
-    Interfaces --> RC
-    RC <-->|"Outbound Long-Poll (TLS)"| RA
-    RA --> EP
-    EP --> SB
-    SB --> WT
-    WT --> AR
-    AR -.->|"Bounded Retrieval"| RC
+    Agent -->|"HTTP / CLI / MCP"| Relay
+    Relay -->|"Outbound TLS"| Remote
+    Remote -->|"Bounded Tasks"| Artifacts
+    Artifacts -.->|"Later Review"| Agent
 ```
 
----
+## What Can I Do with RelayMe?
 
-## Why RelayMe?
+- **Inspect remote systems safely**: Let an agent query system status, processes, service logs, and git diffs without opening inbound ports or granting SSH access.
+- **Run bounded research & test tasks**: An AI research lead can inspect an experiment, launch a pre-registered benchmark or test run, disconnect, and retrieve logs later to plan the next step.
+- **Sandboxed code execution**: Run bounded containerized tasks (such as `patch-and-test`) in disposable Git worktrees where source repositories stay immutable.
+- **Durable multi-session workflows**: Return hours later or hand off work between models—tasks persist in SQLite with atomic idempotency and replayable results.
+- **Vendor-neutral integration**: Works with ChatGPT, Claude, Codex, Antigravity, or custom agents via standard HTTP, CLI, and Model Context Protocol (MCP).
 
-| Dimension | Naive `run_shell` MCP Tool | RelayMe Execution Plane |
-|---|---|---|
-| **Access Model** | Unrestricted shell (`/bin/sh -c ...`) | Pre-registered capabilities & task specs |
-| **Authorization** | All-or-nothing system access | Exact capability and profile scoping per token |
-| **Network Egress** | Host network access / data exfiltration risk | Enforced `--network none` by default |
-| **Filesystem Safety** | Writes directly to host source tree | Isolated disposable worktrees; source repo immutable |
-| **Privilege** | Runs as host user or root | Rootless Podman with non-root Agent-derived UID/GID |
-| **Task Lifecycle** | Ephemeral process tied to client socket | Durable SQLite-backed tasks with idempotency & replay |
-| **Results & Review** | Unbounded stdout dumped into LLM context | Bounded artifacts (`patch.diff`, `test.log`) for later review |
-| **Enforcement** | Client-side trust | Agent-side local policy is final boundary |
+## How It Works
 
----
+- **Controller (Broker)**: Authenticates clients, tracks task state in SQLite, and serves as the central rendezvous point.
+- **Host Agent (Executor)**: Runs on the target machine, long-polls the Controller over outbound TLS, and enforces local security policies.
+- **Client Interface**: Agents interact through standard REST APIs, the `relayme` CLI, or a 13-tool FastMCP stdio server.
 
-## End-to-End Walkthrough (CLI)
+## Example: Bounded Patch & Review
 
-Below is the standard workflow where an external client dispatches a bounded `patch-and-test` task and retrieves reviewable evidence:
+An external agent or engineer dispatches a bounded task, disconnects, and inspects the retained artifacts later:
 
-### 1. Discover Registered Resources & Profiles
 ```sh
-# Discover hosts and registered profiles visible to the client token
-relayme hosts
-relayme list-host-resources HOST_ID
+# 1. Start a bounded task in an isolated disposable worktree
+relayme start-executor-task host-1 research-patch-test patch-and-test \
+  "Fix off-by-one error in pagination parser" --idempotency-key fix-101
+
+# 2. Check execution status and retrieve the generated diff and test log
+relayme task-result <TASK_ID>
+relayme task-artifact <TASK_ID> patch.diff
+relayme task-artifact <TASK_ID> test.log
 ```
 
-### 2. Start a Bounded Executor Task
-The client specifies only the host, registered profile ID, the fixed `patch-and-test` task spec, a brief, and an optional idempotency key:
-```sh
-relayme start-executor-task HOST_ID research-patch-test patch-and-test \
-  "Fix off-by-one error in pagination parser" \
-  --idempotency-key task-fix-101
-```
+The agent reviews the retrieved artifacts directly—without host filesystem access or repository mutations.
 
-### 3. Check Task Status & Results
-```sh
-# Inspect terminal outcome and execution duration
-relayme task-result TASK_ID
-```
+## Why Not Just MCP or SSH?
 
-### 4. Retrieve Bounded Review Artifacts
-Retrieve structured artifacts generated inside the container sandbox without needing SSH or host filesystem access:
-```sh
-# Retrieve the generated unified diff
-relayme task-artifact TASK_ID patch.diff
+- **MCP is a protocol, not an execution engine**: MCP tells an agent *how to call a tool*. RelayMe provides the authorization, isolation, state persistence, and artifact storage *behind* those tools.
+- **No arbitrary `run_shell`**: Instead of unconstrained `/bin/sh -c` access, RelayMe enforces locally registered task specifications, `--network none` rootless sandboxes, and immutable source trees.
+- **Outbound-only connections**: Target machines initiate outbound TLS polling to the Controller—no open inbound ports, no VPN holes, no SSH keys shared with models.
 
-# Retrieve the test execution log
-relayme task-artifact TASK_ID test.log
+## Safety by Default
 
-# Retrieve the structured analysis or outcome
-relayme task-artifact TASK_ID analysis.md
-```
+- **Host Agent is the final authority**: Local policies cannot be overridden by clients or Controller tokens.
+- **Rootless container isolation**: Tasks run in rootless Podman with `--network none`, read-only roots, and Agent-derived non-root identities (`keep-id`).
+- **Disposable Git worktrees**: Host source trees are never modified directly.
+- **Bounded review artifacts**: Artifact retrieval is restricted to declared files with strict byte limits and directory traversal guards.
 
-### 5. Review & Idempotency Replay
-External agents or human reviewers evaluate the patch and test results. Repeating the `start-executor-task` call with the same idempotency key returns the retained result immediately without re-executing.
+## Current Scope (v0.4.1)
 
----
+**Implemented in v0.4.1**:
+- Remote observation (R0): hosts, resources, status, processes, logs, files, git diffs.
+- Bounded registered task execution (R1) & containerized `patch-and-test` executor.
+- Durable SQLite task state, idempotency replay, and 13-tool FastMCP stdio adapter.
+- Verified end-to-end with external Antigravity/ChatGPT MCP clients on real Linux hosts.
 
-## Capabilities & MCP Tools
+**Explicit Non-Goals (v0.4.1)**:
+- No arbitrary remote shell execution or interactive terminal sessions.
+- No automatic upstream Git commit/push (R2 mutation) or deployment orchestration.
+- No GPU cluster scheduling or autonomous research workflow engine.
+- Provider credentials and container runtime profiles remain deployment-local.
 
-RelayMe exposes 13 tools across HTTP, CLI, and standard FastMCP stdio:
+## Documentation
 
-### Read-Only Observation (R0)
-- `list_hosts`: List enrolled hosts visible to the caller's token.
-- `list_host_resources`: List registered services, repositories, and allowed file roots for a host.
-- `host_status`: Bounded host health, load, and resource status.
-- `process_list`: List host processes safely.
-- `read_logs`: Retrieve bounded service logs for a registered service.
-- `read_file`: Read a file strictly within Agent-allowed filesystem roots.
-- `git_diff`: Read the Git diff of a registered repository.
+- [Architecture & Detailed Setup](docs/architecture.md) — Controller, Agent, and CLI setup guide.
+- [Security Model & Disclosure](SECURITY.md) — Defense-in-depth architecture and vulnerability reporting.
+- [Changelog](CHANGELOG.md) — Version history and release notes.
 
-### Bounded Execution (R1)
-- `run_registered_task`: Run a locally registered, fixed binary command with no arguments.
-- `start_registered_executor_task`: Start a registered `patch-and-test` container execution inside a disposable worktree.
+## License
 
-### Task Management & Artifact Review
-- `get_task`: Query task status and lifecycle metadata.
-- `task_result`: Retrieve durable terminal results and artifact manifests.
-- `list_reviewable_tasks`: List completed executor tasks with retained evidence.
-- `get_task_artifact`: Retrieve bounded text artifacts (`patch.diff`, `result.json`, `test.log`, `analysis.md`).
-
----
-
-## Scope Boundaries & Non-Goals (v0.4.1)
-
-To maintain strict operational safety, RelayMe enforces deliberate design limits:
-
-- **`patch-and-test` Only**: The executor runtime is purpose-built for the single `patch-and-test` task specification; general arbitrary job scheduling is not supported.
-- **No Arbitrary Shell**: Tasks execute registered binaries directly; no interactive shell interpreters or arbitrary command strings.
-- **No Upstream Mutations (No R2)**: Modifications occur strictly in disposable worktrees. RelayMe does not commit or push changes to upstream branches.
-- **No GPU Scheduler**: RelayMe does not manage GPU allocations or distributed cluster queues.
-- **Vendor-Neutral Core**: RelayMe Core contains no LLM provider APIs, proprietary token protocols, or vendor-specific prompt templates.
-- **No Autonomous Workflow Engine**: RelayMe is a secure compute/state bridge, not a reasoning agent.
-- **Deployment-Local Provider Profiles**: External provider credentials and proxy configs remain strictly deployment-local and decoupled from RelayMe Core.
-
----
-
-## Security Model
-
-- **Agent Is Final Authority**: The Host Agent evaluates and enforces all policies locally. It never trusts the Controller or client tokens blindly.
-- **Outbound Long-Polling**: Managed hosts initiate outbound TLS connections to the Controller. No inbound ports or firewall holes are opened on target systems.
-- **Rootless Container Sandboxing**: Executor tasks run in rootless Podman with `--network none`, read-only root filesystems, and strict CPU/memory/PID limits.
-- **Identity Isolation**: Supports `user_namespace: "keep-id"` combined with derived non-root Agent UID:GID (`execution_identity: "agent"`), preventing container root escalation.
-- **Source Repository Immutability**: Tasks run in isolated disposable Git worktrees that are pruned after execution; host repositories remain pristine.
-- **Bounded Artifact Retrieval**: Artifact retrieval is restricted to declared manifest names (`patch.diff`, `result.json`, `test.log`, `analysis.md`) with a strict 100,000-byte cap, directory traversal rejection, and symlink protection.
-- **Cryptographic Token Scoping**: Controller tokens are hashed in SQLite and enforce exact capability scopes (`list_hosts`, `run_registered_task:<task_id>`, `run_executor_task:<profile_id>`).
-
----
-
-## Getting Started
-
-### Requirements
-- Python 3.10+
-- Podman (for executor tasks)
-
-### Installation
-```sh
-pip install .
-```
-
-### Quickstart
-
-1. **Start the Controller**:
-   ```sh
-   relayme-controller --db relayme.db --bootstrap-token CHANGE_ME_ADMIN_TOKEN
-   ```
-
-2. **Provision Scoped Client Tokens**:
-   Scoped tokens are issued locally via the Controller CLI (never over public HTTP):
-   ```sh
-   relayme admin --db relayme.db create-client \
-     --name agent-client \
-     --capability list_hosts \
-     --capability list_host_resources \
-     --capability run_executor_task:research-patch-test \
-     --output-file client-token.txt
-   ```
-
-3. **Start the Host Agent**:
-   Configure [`examples/agent.example.json`](examples/agent.example.json) and start the agent:
-   ```sh
-   relayme-agent --config agent.json
-   ```
-
-4. **Run the Generic FastMCP Adapter**:
-   Configure the client environment (see [`examples/mcp.env.example`](examples/mcp.env.example)):
-   ```sh
-   export RELAYME_URL=http://127.0.0.1:8765
-   export RELAYME_TOKEN=$(cat client-token.txt)
-
-   relayme-mcp
-   ```
-
----
-
-## Project Status
-
-- **Version**: 0.4.1 (Stable Release)
-- **Automated Tests**: 66 passing tests (58 core/security unit tests, 8 MCP adapter tests)
-- **External Validation**: Verified end-to-end with external Antigravity MCP client on real Linux hosts.
-- **License**: [Apache 2.0](LICENSE)
+[Apache 2.0](LICENSE)
