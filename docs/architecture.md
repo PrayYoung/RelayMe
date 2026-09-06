@@ -25,6 +25,7 @@ flowchart TD
     subgraph Interfaces ["Client Interfaces"]
         I1["HTTP / REST API (:8765)"]
         I2["FastMCP Adapter (stdio)"]
+        I3["FastMCP Remote (:8000)\nStreamable HTTP & SSE"]
     end
 
     subgraph ControllerPlane ["Controller Host"]
@@ -81,7 +82,7 @@ Configure an agent profile (see [`examples/agent.example.json`](../examples/agen
 relayme-agent --config /path/to/agent.json
 ```
 
-### 4. Configure FastMCP Adapter
+### 4. Configure FastMCP Adapter (stdio)
 Clients using the Model Context Protocol launch `relayme-mcp` via stdio:
 ```sh
 export RELAYME_URL=https://controller.example.invalid:8765
@@ -91,6 +92,17 @@ export RELAYME_CA_CERT=/path/to/ca.pem
 
 relayme-mcp
 ```
+
+### 5. Launch Remote FastMCP Server (Web Clients)
+For web-based LLM clients (Claude Web, Gemini, ChatGPT), run the remote MCP adapter over Streamable HTTP and SSE:
+```sh
+relayme-mcp-remote \
+  --controller-url https://controller.example.invalid:8765 \
+  --host 127.0.0.1 \
+  --port 8000 \
+  --transport both
+```
+Incoming requests pass their client token via `Authorization: Bearer <token>`. See [`docs/mcp.md`](mcp.md) for full deployment and authentication documentation.
 
 ---
 

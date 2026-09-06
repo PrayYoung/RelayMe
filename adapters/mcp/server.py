@@ -7,6 +7,7 @@ policy decisions to RelayMe.
 from __future__ import annotations
 
 import argparse
+from contextvars import ContextVar
 import json
 import os
 import ssl
@@ -15,6 +16,8 @@ from dataclasses import dataclass
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+current_token: ContextVar[str | None] = ContextVar("current_token", default=None)
 
 
 TOOL_NAMES = (
@@ -61,7 +64,7 @@ class ControllerError(RuntimeError):
 @dataclass(frozen=True)
 class AdapterConfig:
     controller_url: str
-    client_token: str
+    client_token: str | None = None
     ca_cert: str | None = None
     wait_seconds: int = 35
 
@@ -84,8 +87,11 @@ class ControllerClient:
 
     def request(self, method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         if self._request_fn: return self._request_fn(method, path, body)
+        token = current_token.get() or self.config.client_token
+        if not token:
+            raise ControllerError(401, "No authentication token provided")
         request = Request(self.config.controller_url + path, data=json.dumps(body).encode() if body is not None else None,
-                          method=method, headers={"Authorization": "Bearer " + self.config.client_token, "Content-Type": "application/json"})
+                          method=method, headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
         try:
             context = ssl.create_default_context(cafile=self.config.ca_cert) if self.config.ca_cert else None
             with urlopen(request, timeout=self.config.wait_seconds, context=context) as response: return json.loads(response.read())
@@ -170,11 +176,12 @@ class RelayMeMcpAdapter:
     def _result(value: dict[str, Any]) -> dict[str, Any]: return value
 
 
-def create_mcp_server(adapter: RelayMeMcpAdapter):
+def create_mcp_server(adapter: RelayMeMcpAdapter, server: Any | None = None):
     """Create an MCP server lazily so translation logic remains directly testable."""
     try: from mcp.server.fastmcp import FastMCP
     except ImportError as exc: raise ConfigurationError("MCP SDK is required; install RelayMe with its MCP dependency") from exc
-    server = FastMCP("RelayMe", instructions="RelayMe exposes seven read-only R0 observation/discovery tools and bounded R1 registered tasks, including one registered patch-and-test executor task. R1 uses only locally registered fixed policy; it provides no arbitrary shell, provider-specific authority, or mutation access.", json_response=True)
+    if server is None:
+        server = FastMCP("RelayMe", instructions="RelayMe exposes seven read-only R0 observation/discovery tools and bounded R1 registered tasks, including one registered patch-and-test executor task. R1 uses only locally registered fixed policy; it provides no arbitrary shell, provider-specific authority, or mutation access.", json_response=True)
 
     def invoke(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         try:

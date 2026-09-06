@@ -22,6 +22,7 @@ relayme-controller = "relayme.controller:main"
 relayme-agent = "relayme.agent:main"
 relayme = "relayme.cli:main"
 relayme-mcp = "adapters.mcp.server:main"
+relayme-mcp-remote = "adapters.mcp.remote:main"
 
 [tool.setuptools.packages.find]
 include = ["relayme*", "adapters*"]
