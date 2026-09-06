@@ -1,6 +1,6 @@
 {
-  "version": "0.4",
-  "status": "v04_stable_baseline_gemini_experiment_paused",
+  "version": "0.4.1",
+  "status": "v041_release_ready",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -71,8 +71,9 @@
     "Evaluated standalone Antigravity CLI as an in-container coding executor runtime: concluded it is specialized as an external orchestrator/client rather than a minimal Linux container-internal worker due to macOS binary/runtime, Keychain authentication, and background language-server dependencies",
     "Validated Antigravity CLI as an external RelayMe v0.4 client through the generic MCP stdio adapter: task execution, task_result queries, reviewable task listings, exact idempotency replay, and source repository preservation completed entirely through generic MCP without SSH or RelayMe Core changes",
     "Added bounded executor-task artifact read capability (get_task_artifact) across Controller HTTP, CLI, and generic MCP with strict owner/actor authorization, manifest-only resolution (patch.diff, result.json, test.log, analysis.md), canonical filesystem validation, and 100,000-byte cap with truncation metadata; all 66 regression tests pass",
-    "Completed real-host external-client acceptance with Antigravity as generic MCP client: discovered artifact manifest via task_result, retrieved patch.diff, test.log, and analysis.md via get_task_artifact, and completed patch/test/isolation review without SSH or host filesystem access; source repository verified unmodified"
+    "Completed real-host external-client acceptance with Antigravity as generic MCP client: discovered artifact manifest via task_result, retrieved patch.diff, test.log, and analysis.md via get_task_artifact, and completed patch/test/isolation review without SSH or host filesystem access; source repository verified unmodified",
+    "Consolidated, validated, and frozen the complete external-agent executor/review loop as release v0.4.1 (66 passing regression tests, clean wheel build, verified 13-tool FastMCP adapter, and complete scope boundary documentation)"
   ],
-  "current_work": "Bounded executor-task artifact read capability (get_task_artifact) is implemented, validated, and deployed across HTTP, CLI, and generic MCP surfaces. The full external client loop (task execution -> task_result -> artifact body retrieval -> patch/test review) is verified end-to-end with Antigravity entirely through generic MCP. RelayMe Core remains vendor-neutral.",
-  "next_action": "Next product step requires explicit authorization. Candidate directions include provider-enabled executor acceptance, additional client/executor workflows, or v0.4 release tag consolidation. Gemini-specific investigation remains paused."
+  "current_work": "RelayMe v0.4.1 is consolidated, validated, documented, and frozen as a tagged release. The complete external-agent executor and review loop is operational and verified end-to-end via generic HTTP/CLI/MCP surfaces without SSH or host filesystem bypass. RelayMe Core remains vendor-neutral.",
+  "next_action": "Next product step requires explicit authorization after v0.4.1 release. Candidate directions include provider-enabled executor acceptance or additional executor task specifications. Gemini provider experiment remains paused."
 }

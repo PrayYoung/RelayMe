@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "relayme"
-version = "0.4.0"
+version = "0.4.1"
 description = "Minimal remote operations bridge with bounded registered tasks and executor profiles"
 readme = "README.md"
 requires-python = ">=3.10"

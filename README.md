@@ -1,10 +1,33 @@
-# RelayMe v0.4
+# RelayMe v0.4.1
 
 RelayMe is a small, vendor-neutral remote operations bridge. A client creates a task with the Controller; a Host Agent obtains it through outbound long-polling, enforces its local policy, and returns a bounded structured result.
 
 Requires Python 3.10 or newer.
 
-It implements seven read-only R0 capabilities: `list_hosts`, `list_host_resources`, `host_status`, `process_list`, `read_logs`, `read_file`, and `git_diff`. v0.4 has two bounded R1 capabilities: `run_registered_task` and `start_registered_executor_task`.
+It implements seven read-only R0 capabilities: `list_hosts`, `list_host_resources`, `host_status`, `process_list`, `read_logs`, `read_file`, and `git_diff`. v0.4.1 adds bounded R1 capabilities: `run_registered_task` and `start_registered_executor_task`, along with bounded artifact retrieval `get_task_artifact`.
+
+RelayMe supports the complete external-agent executor and review loop:
+
+```
+external client
+→ generic HTTP/CLI/MCP
+→ bounded registered executor task
+→ isolated disposable worktree
+→ retained structured result/artifacts
+→ bounded artifact retrieval
+→ later external-agent review
+```
+
+### Scope Boundaries
+
+RelayMe maintains strict operational and security boundaries:
+- **`patch-and-test` specification only**: executor tasks run the single bounded `patch-and-test` task specification; arbitrary tasks or general job running are not supported.
+- **No arbitrary shell**: tasks execute registered binaries directly without shell invocation or arbitrary commands.
+- **No R2 mutations**: tasks execute strictly in isolated disposable worktrees and do not commit, push, or mutate upstream branches.
+- **No GPU scheduler**: RelayMe does not manage GPU allocation or cluster orchestration.
+- **Vendor-neutral Core**: RelayMe Core contains no provider-specific APIs, credentials, or protocol logic.
+- **No autonomous workflow engine**: RelayMe is a secure compute/state bridge, not a reasoning or orchestration engine.
+- **Provider-enabled profiles**: provider-enabled container profiles remain deployment-specific and are future work; Core remains completely decoupled.
 
 R1 is not shell access. For a normal registered task, the client selects only a host, a locally registered task ID, and an optional opaque idempotency key. The Agent fixes the executable, argv, working directory, minimal environment, timeout, output limits, and execution identity; tasks never use a shell and must not run as root.
 
@@ -72,6 +95,8 @@ relayme git-diff HOST_ID example-app
 relayme run-task HOST_ID example-health-check --idempotency-key one-safe-run
 relayme start-executor-task HOST_ID research-patch-test patch-and-test "Apply the bounded requested change." --idempotency-key one-safe-execution
 relayme list-reviewable-tasks
+relayme task-result TASK_ID
+relayme task-artifact TASK_ID patch.diff
 ```
 
 `RELAYME_CA_CERT` is optional when the Controller certificate chains to the client machine's normal trust store. The CLI never falls back to SSH or shell execution.
@@ -92,6 +117,7 @@ The optional MCP adapter translates standard MCP tool calls to the existing Rela
 - `get_task`
 - `task_result`
 - `list_reviewable_tasks`
+- `get_task_artifact`
 
 Call `list_hosts` when the host identity is unknown, then `list_host_resources` before service-, repository-, path-, or task-scoped tools. Host-scoped operations accept a canonical host ID or a unique hostname. Discovery returns only resources already registered by the Host Agent; it never lists arbitrary files or system services. Registered-task discovery exposes only safe IDs, descriptions, and timeout bounds—not executable paths, argv, environments, or working directories.
 

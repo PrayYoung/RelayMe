@@ -73,11 +73,12 @@ v0.4 registered executor-task bridge is stable and validated on real hosts with 
   - Enforced conservative per-response byte cap (100,000 bytes) with `truncated: true` and full size/SHA-256 metadata preservation.
   - Added full regression coverage: 58 base unit tests and 8 MCP adapter tests (66 total tests) passing cleanly.
 - Completed external-client acceptance with Antigravity as MCP client on real-host executor task output: discovered artifact manifest via `task_result`, retrieved `patch.diff`, `test.log`, and `analysis.md` via `get_task_artifact`, and conducted independent review of patch scope and sandbox isolation entirely through RelayMe MCP without SSH or host filesystem access; source repository verified unmodified.
+- Consolidated, validated, and frozen the complete external-agent executor/review loop as release v0.4.1 (66 passing regression tests, clean wheel build, verified 13-tool FastMCP adapter, and complete scope boundary documentation).
 
 ## Current work
 
-- Bounded executor-task artifact read capability (`get_task_artifact`) is implemented, validated, and deployed across HTTP, CLI, and generic MCP surfaces. The full external client loop (`task execution -> task_result -> artifact body retrieval -> patch/test review`) is verified end-to-end with Antigravity entirely through generic MCP. RelayMe Core remains vendor-neutral.
+- RelayMe v0.4.1 is consolidated, validated, documented, and frozen as a tagged release. The complete external-agent executor and review loop is operational and verified end-to-end via generic HTTP/CLI/MCP surfaces without SSH or host filesystem bypass. RelayMe Core remains vendor-neutral.
 
 ## Next action
 
-- Next product step requires explicit authorization. Candidate directions include provider-enabled executor acceptance, additional client/executor workflows, or v0.4 release tag consolidation. Gemini-specific investigation remains paused.
+- Next product step requires explicit authorization after v0.4.1 release. Candidate directions include provider-enabled executor acceptance or additional executor task specifications. Gemini provider experiment remains paused.
