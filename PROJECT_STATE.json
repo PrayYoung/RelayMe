@@ -1,6 +1,6 @@
 {
   "version": "0.4",
-  "status": "v04_provider_executor_acceptance_blocked_provider_http_404",
+  "status": "v04_stable_baseline_gemini_experiment_paused",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -66,8 +66,9 @@
     "Repeated isolated real-host non-provider executor acceptance with Agent-local identity alignment: protected worktree and output writes, fixed patch-and-test execution, artifact retention, no-network/forbidden-path checks, source preservation, cleanup, retained review retrieval, and exact idempotency replay all passed without provider credential or egress",
     "Performed exactly one deployment-local Gemini provider-profile acceptance through start_registered_executor_task: the fixed launcher failed before network use because its host-built dynamically linked binary could not start in the minimal executor image; the retained failed result replayed and remained reviewable, source remained unchanged, and the temporary profile, scoped client, runtime credential copy, proxy policy/attachment, launcher, image, and disposable fixture were removed without a RelayMe Core change or provider request",
     "Proved the ABI mismatch with a no-network probe, rebuilt the fixed deployment-local launcher as a static ARM64 binary, and passed an offline rootless keep-id/Agent-identity self-test with read-only root filesystem, network none, and synthetic mounts; the single newly authorized provider task then failed before container launch because its temporary profile retained an unrelated base revision, replayed without a second execution, created no proxy attachment or provider request, and all temporary deployment material was removed",
-    "Created a fresh provider fixture and independently verified its registered repository/base-commit binding before one RelayMe task; the static launcher started and the proxy permitted exactly one CONNECT to the configured provider host, which returned HTTP 404; the task retained a reviewable failed result and replayed without re-execution, source remained unchanged, and the exact policy, credential copy, client, profile, image, fixture worktree, and attachment were removed without a RelayMe Core change"
+    "Created a fresh provider fixture and independently verified its registered repository/base-commit binding before one RelayMe task; the static launcher started and the proxy permitted exactly one CONNECT to the configured provider host, which returned HTTP 404; the task retained a reviewable failed result and replayed without re-execution, source remained unchanged, and the exact policy, credential copy, client, profile, image, fixture worktree, and attachment were removed without a RelayMe Core change",
+    "Paused deployment-local Gemini provider acceptance experiments after validating exact-host CONNECT egress routing, credential isolation, and static launcher compatibility; consolidated the stable v0.4 registered executor-task baseline across HTTP, CLI, and MCP surfaces"
   ],
-  "current_work": "v0.4 executor-task bridge is locally and real-host accepted for the isolated non-provider profile; provider routing reached the exact host, but the fixed Gemini request returned HTTP 404 and provider acceptance remains blocked",
-  "next_action": "Before any fresh provider authorization, diagnose the fixed Gemini API request/model path responsible for the HTTP 404 without broadening the endpoint policy or changing RelayMe Core"
+  "current_work": "v0.4 registered executor-task bridge is validated and stable for non-provider profiles on real hosts (rootless Podman, keep-id, derived agent execution identity, disposable worktrees, bounded artifacts, and review queries); deployment-local Gemini provider experiment is intentionally paused; RelayMe Core remains vendor-neutral and unchanged",
+  "next_action": "Next product step requires explicit authorization. Candidate directions include provider-enabled executor acceptance, additional executor-client validation, or v0.4 release hardening. Gemini-specific investigation is paused."
 }

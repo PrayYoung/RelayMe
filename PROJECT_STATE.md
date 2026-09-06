@@ -2,7 +2,7 @@
 
 ## Status
 
-v0.4 registered executor-task bridge is locally validated with a synthetic, non-provider patch-and-test profile. Existing v0.3 behavior remains validated; deployment credentials, network profiles, and real task policies remain local and untracked.
+v0.4 registered executor-task bridge is stable and validated on real hosts with the isolated non-provider patch-and-test profile under rootless Podman (`user_namespace: keep-id`, `execution_identity: agent`). Deployment-local Gemini provider experiment validated egress proxying, credential isolation, and static launcher compatibility, but encountered an HTTP 404 on its fixed request path; Gemini provider acceptance is intentionally paused and is not a RelayMe Core blocker. Existing v0.3 behavior remains validated; deployment credentials, network profiles, and real task policies remain local and untracked.
 
 ## Completed
 
@@ -63,11 +63,12 @@ v0.4 registered executor-task bridge is locally validated with a synthetic, non-
 - Performed exactly one deployment-local Gemini provider-profile acceptance attempt through `start_registered_executor_task`. The fixed container launcher failed before network use because its host-built dynamically linked binary could not start in the minimal executor image. The retained failed result replayed and remained reviewable; source remained unchanged. The temporary profile, scoped client, runtime credential copy, proxy policy/attachment, launcher, image, and disposable fixture were removed. No RelayMe Core defect was found and no provider request was sent.
 - Proved the host-binary/runtime mismatch with a no-network ABI probe, then rebuilt the fixed deployment-local launcher as a static ARM64 binary and passed an offline rootless `keep-id`/Agent-identity self-test with read-only root filesystem, network none, and synthetic worktree/output mounts. The single newly authorized provider task then stopped before container launch because its temporary profile retained a base revision from the unrelated source repository. The retained failure replayed without a second execution; no proxy attachment or provider request occurred. All temporary provider deployment material was removed.
 - Created a fresh provider fixture and independently verified its registered repository/base-commit binding before one RelayMe task. The static launcher started and the proxy permitted exactly one CONNECT to the configured provider host, which returned HTTP 404. The task retained a reviewable failed result and replayed without re-execution; source stayed unchanged. The exact policy, credential copy, client, profile, image, fixture worktree, and attachment were removed. No RelayMe Core change occurred.
+- Paused deployment-local Gemini provider acceptance experiments after validating exact-host CONNECT egress routing, credential isolation, and static container-launcher compatibility. Consolidated the stable v0.4 registered executor-task baseline (patch-and-test spec, rootless Podman sandbox, keep-id namespace, derived agent execution identity, disposable worktrees, bounded review artifacts, and HTTP/CLI/MCP query surfaces).
 
 ## Current work
 
-- v0.4 executor-task bridge is locally and real-host accepted for the isolated non-provider profile. Provider routing reached the exact host, but the fixed Gemini request returned HTTP 404; provider acceptance remains blocked.
+- v0.4 registered executor-task bridge is validated and stable for non-provider profiles on real hosts (rootless Podman, keep-id, derived agent execution identity, disposable worktrees, bounded artifacts, and review queries). The deployment-local Gemini provider experiment is intentionally paused. RelayMe Core remains vendor-neutral and unchanged.
 
 ## Next action
 
-- Before any fresh provider authorization, diagnose the fixed Gemini API request/model path responsible for the HTTP 404 without broadening the endpoint policy or changing RelayMe Core.
+- Next product step requires explicit authorization. Candidate directions include provider-enabled executor acceptance, additional executor-client validation, or v0.4 release hardening. Gemini-specific investigation is paused.
