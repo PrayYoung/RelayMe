@@ -1,6 +1,6 @@
 {
   "version": "0.4",
-  "status": "v04_provider_executor_acceptance_blocked_profile_base_revision",
+  "status": "v04_provider_executor_acceptance_blocked_provider_http_404",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -65,8 +65,9 @@
     "Added the sole Agent-local executor execution-identity mode, execution_identity=agent, valid only with keep-id; it derives the running non-root Agent UID/GID into one fixed Podman --user argument while clients and briefs cannot supply identities or Podman options",
     "Repeated isolated real-host non-provider executor acceptance with Agent-local identity alignment: protected worktree and output writes, fixed patch-and-test execution, artifact retention, no-network/forbidden-path checks, source preservation, cleanup, retained review retrieval, and exact idempotency replay all passed without provider credential or egress",
     "Performed exactly one deployment-local Gemini provider-profile acceptance through start_registered_executor_task: the fixed launcher failed before network use because its host-built dynamically linked binary could not start in the minimal executor image; the retained failed result replayed and remained reviewable, source remained unchanged, and the temporary profile, scoped client, runtime credential copy, proxy policy/attachment, launcher, image, and disposable fixture were removed without a RelayMe Core change or provider request",
-    "Proved the ABI mismatch with a no-network probe, rebuilt the fixed deployment-local launcher as a static ARM64 binary, and passed an offline rootless keep-id/Agent-identity self-test with read-only root filesystem, network none, and synthetic mounts; the single newly authorized provider task then failed before container launch because its temporary profile retained an unrelated base revision, replayed without a second execution, created no proxy attachment or provider request, and all temporary deployment material was removed"
+    "Proved the ABI mismatch with a no-network probe, rebuilt the fixed deployment-local launcher as a static ARM64 binary, and passed an offline rootless keep-id/Agent-identity self-test with read-only root filesystem, network none, and synthetic mounts; the single newly authorized provider task then failed before container launch because its temporary profile retained an unrelated base revision, replayed without a second execution, created no proxy attachment or provider request, and all temporary deployment material was removed",
+    "Created a fresh provider fixture and independently verified its registered repository/base-commit binding before one RelayMe task; the static launcher started and the proxy permitted exactly one CONNECT to the configured provider host, which returned HTTP 404; the task retained a reviewable failed result and replayed without re-execution, source remained unchanged, and the exact policy, credential copy, client, profile, image, fixture worktree, and attachment were removed without a RelayMe Core change"
   ],
-  "current_work": "v0.4 executor-task bridge is locally and real-host accepted for the isolated non-provider profile; launcher compatibility is proven offline, but provider acceptance is blocked because the one authorized task exposed a temporary-profile base-revision registration error before container launch",
-  "next_action": "Before any fresh provider authorization, correct the deployment-local profile to bind its own fixed source base revision, then repeat one exact-host acceptance without changing RelayMe Core or policy"
+  "current_work": "v0.4 executor-task bridge is locally and real-host accepted for the isolated non-provider profile; provider routing reached the exact host, but the fixed Gemini request returned HTTP 404 and provider acceptance remains blocked",
+  "next_action": "Before any fresh provider authorization, diagnose the fixed Gemini API request/model path responsible for the HTTP 404 without broadening the endpoint policy or changing RelayMe Core"
 }

@@ -96,6 +96,27 @@ semantics. The profile base-revision error is an independent deployment
 confounder. The conclusion is therefore limited to static-launcher runtime
 compatibility and must not be interpreted as provider acceptance.
 
+## 2026-09-06 — Fresh fixture-bound provider attempt
+
+A new isolated repository was committed and its immutable HEAD was verified
+in that exact repository before the temporary profile was atomically bound to
+the same repository ID and commit. The registered binding was independently
+checked before the single RelayMe task. The static launcher then started in
+the rootless sandbox and the proxy audit recorded one CONNECT to the sole
+exactly allowed provider destination, followed by attachment release.
+
+The provider returned HTTP 404. The task retained a reviewable failed result;
+replay returned the original execution without rerun and the source Git diff
+was empty. No other endpoint was requested. All temporary deployment material
+was removed. This rules out the earlier base-revision and dynamic-loader
+issues for this attempt, but does not establish usable provider connectivity;
+the remaining issue is the fixed provider request/model path.
+
+Critic review: the experiment cleanly tests fixture binding, launcher startup,
+and exact-host routing. It does not identify whether the 404 is a model name,
+API version, endpoint path, or account/API availability issue; determining
+that requires a separately authorized, non-broadening request-path review.
+
 Critic review: the direct mapping probe and the real task test different
 layers. The probe establishes that the fixed derived UID/GID can write fresh
 `0700` worktree and output mounts under the exact keep-id mapping. The actual

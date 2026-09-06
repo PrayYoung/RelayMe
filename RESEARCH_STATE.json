@@ -4,46 +4,46 @@
     "updated_at": "2026-09-06T00:00:00-07:00"
   },
   "active_question": {
-    "id": "gemini-provider-launcher-compatibility-20260906",
-    "title": "Validate image-compatible fixed Gemini launcher execution",
+    "id": "gemini-provider-base-binding-acceptance-20260906",
+    "title": "Validate one provider task with a fixture-bound immutable base revision",
     "status": "concluded",
-    "summary": "The ABI mismatch was corrected and offline compatibility passed, but the single provider task was rejected by a temporary-profile base-revision registration error before container, proxy, credential, or provider use."
+    "summary": "The fresh fixture/base binding passed, the static launcher and exact-host route were reached, and the provider returned HTTP 404; no retry or endpoint change was made."
   },
   "current_hypothesis": {
-    "id": "gemini-launcher-image-compatibility",
-    "statement": "A fixed launcher built in the exact minimal executor-image runtime will start as the mapped Agent identity and pass the offline bounded worktree/output self-test without changing RelayMe, credentials, or egress policy.",
+    "id": "gemini-fixture-bound-provider-acceptance",
+    "statement": "A fresh profile whose registered repository and immutable base revision are verified equal before task creation will launch the existing static provider launcher without profile validation failure and can test the exact-host Gemini path without any RelayMe change.",
     "falsifiable": true,
     "frozen_at": "2026-09-06T00:00:00-07:00",
     "success_criteria": [
-      "The rebuilt launcher has no unavailable dynamic interpreter or library dependency in the executor image.",
-      "The offline rootless self-test starts as the mapped Agent identity, reads its fixed worktree input, writes its bounded output, and requires no network."
+      "The registered repository path and base revision equal a commit verified in that exact fresh fixture before task creation.",
+      "The single task reaches a container and either yields a bounded provider result or a classified provider-layer failure without policy expansion."
     ],
     "failure_criteria": [
-      "The rebuilt launcher cannot start or cannot access its registered mounts in the exact sandbox.",
-      "The correction would require an image, policy, or credential change broader than the fixed deployment-local launcher."
+      "Agent rejects the explicitly fixture-bound base revision before container launch.",
+      "The task requests an unapproved endpoint or needs a RelayMe, credential, or proxy-model change."
     ],
     "primary_metrics": [
-      "interpreter and shared-library compatibility",
-      "offline launcher exit status and mapped UID/GID",
-      "fixed worktree/output access with network none"
+      "fixture repository/base-revision equality",
+      "container and provider outcome classification",
+      "source preservation, retained artifacts, and idempotent replay"
     ],
     "baseline_refs": [
       "9cde1dfd1680492adbc54cc54c4fc829ea82ffef",
-      "failed task 6a22f4cd-2b2d-4c2b-8357-861a09d8a098",
+      "failed task 3f048de3-fce6-4474-9e78-c77973f5122c",
       "real-host non-provider executor acceptance"
     ]
   },
   "active_experiment": {
-    "id": "gemini-launcher-offline-compatibility-20260906",
-    "purpose": "Build and exercise only the fixed provider launcher in the exact rootless executor runtime before any provider request.",
-    "design": "Record host/image ABI metadata, build the fixed launcher in a matching image stage, and run one offline self-test under the established keep-id, Agent-identity, network-none sandbox with synthetic mounts and no real credential.",
+    "id": "gemini-fixture-bound-provider-run-20260906",
+    "purpose": "Run one fresh provider-enabled task only after independent repository/base-revision verification.",
+    "design": "Create a new synthetic repository, capture and verify its immutable commit, atomically bind that exact revision into the temporary profile, verify the binding independently, then issue exactly one RelayMe task with the existing static launcher and exact-host policy.",
     "backend": "existing RelayMe test host rootless Podman",
     "state": "failed",
-    "job_ref": "deployment-local launcher compatibility correction",
-    "output_ref": "deployment-local sanitized ABI and offline self-test evidence",
+    "job_ref": "deployment-local fixture-bound provider acceptance",
+    "output_ref": "deployment-local sanitized provider acceptance evidence",
     "submitted_at": "2026-09-06T00:00:00-07:00",
     "last_checked_at": "2026-09-06T00:00:00-07:00",
-    "result_summary": "Host glibc and Alpine musl loader mismatch was reproduced with a safe ABI probe. A static ARM64 launcher passed the exact offline rootless self-test. The one authorized provider task then failed before container launch with invalid_base_revision because its temporary profile inherited an unrelated repository revision; replay retained the same failure and no proxy or provider request occurred."
+    "result_summary": "Fresh fixture/base binding was independently verified. The one task launched the static rootless container and used exactly one permitted CONNECT, then retained a reviewable HTTP 404 failure without source change or rerun."
   },
   "findings": [
     {
@@ -91,11 +91,22 @@
       ],
       "classification": "deployment-profile-registration",
       "recorded_at": "2026-09-06T00:00:00-07:00"
+    },
+    {
+      "id": "gemini-exact-route-http-404",
+      "summary": "The corrected fixture binding and static launcher reached the exact allowed provider host, but the fixed Gemini request returned HTTP 404. This is a provider request/model-path issue, not a RelayMe profile, sandbox, or egress-routing failure.",
+      "evidence": [
+        "The profile repository and immutable base commit were independently verified equal before task creation.",
+        "Proxy audit recorded one attachment, one CONNECT to the exact host on port 443, and release with no other destination.",
+        "The task result is retained and reviewable; idempotency replay returned the original execution ID and source Git diff was empty."
+      ],
+      "classification": "provider-request-404",
+      "recorded_at": "2026-09-06T00:00:00-07:00"
     }
   ],
   "candidate_next_experiments": [
     {
-      "summary": "After separately authorizing a new one-shot attempt, bind the temporary provider profile to its own source repository base revision, then repeat the same exact-host test using the already validated static launcher without changing RelayMe Core or broadening the egress policy.",
+      "summary": "Before separately authorizing any new task, diagnose the fixed Gemini request/model path that caused HTTP 404 without broadening the exact-host policy or changing RelayMe Core.",
       "priority": "next"
     }
   ]
