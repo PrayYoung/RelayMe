@@ -4,46 +4,46 @@
     "updated_at": "2026-09-06T00:00:00-07:00"
   },
   "active_question": {
-    "id": "gemini-provider-executor-acceptance-20260906",
-    "title": "Validate one provider-enabled bounded executor task",
+    "id": "gemini-provider-launcher-compatibility-20260906",
+    "title": "Validate image-compatible fixed Gemini launcher execution",
     "status": "concluded",
-    "summary": "One controlled attempt established that the deployment-local provider launcher did not start in the minimal executor image; provider connectivity was not exercised and no policy expansion occurred."
+    "summary": "The ABI mismatch was corrected and offline compatibility passed, but the single provider task was rejected by a temporary-profile base-revision registration error before container, proxy, credential, or provider use."
   },
   "current_hypothesis": {
-    "id": "gemini-exact-egress-acceptance",
-    "statement": "One fixed Gemini patch-and-test executor profile can complete through the existing exact-host CONNECT attachment while keeping direct egress blocked and credentials outside worktree, output, and audit surfaces.",
+    "id": "gemini-launcher-image-compatibility",
+    "statement": "A fixed launcher built in the exact minimal executor-image runtime will start as the mapped Agent identity and pass the offline bounded worktree/output self-test without changing RelayMe, credentials, or egress policy.",
     "falsifiable": true,
-    "frozen_at": "2026-09-02T00:00:00-07:00",
+    "frozen_at": "2026-09-06T00:00:00-07:00",
     "success_criteria": [
-      "The fixed provider task reaches SUCCEEDED with a usable provider response and one disposable synthetic-file change.",
-      "The task retains the four bounded review artifacts, keeps source and direct egress isolated, and replays without re-execution."
+      "The rebuilt launcher has no unavailable dynamic interpreter or library dependency in the executor image.",
+      "The offline rootless self-test starts as the mapped Agent identity, reads its fixed worktree input, writes its bounded output, and requires no network."
     ],
     "failure_criteria": [
-      "Gemini returns availability, authentication, quota, invalid-model, or new-endpoint failure; the single attempt then stops.",
-      "The task requests an unapproved hostname or requires policy expansion."
+      "The rebuilt launcher cannot start or cannot access its registered mounts in the exact sandbox.",
+      "The correction would require an image, policy, or credential change broader than the fixed deployment-local launcher."
     ],
     "primary_metrics": [
-      "provider HTTP/result classification",
-      "exact destination and direct-egress outcome",
-      "artifact retention, source preservation, and idempotent replay"
+      "interpreter and shared-library compatibility",
+      "offline launcher exit status and mapped UID/GID",
+      "fixed worktree/output access with network none"
     ],
     "baseline_refs": [
       "9cde1dfd1680492adbc54cc54c4fc829ea82ffef",
-      "prior Gemini deny-first probe: exact CONNECT destination only",
+      "failed task 6a22f4cd-2b2d-4c2b-8357-861a09d8a098",
       "real-host non-provider executor acceptance"
     ]
   },
   "active_experiment": {
-    "id": "gemini-provider-executor-run-20260906",
-    "purpose": "Run exactly one fixed provider-enabled patch-and-test task through the existing RelayMe API.",
-    "design": "Register one local-only Gemini profile with the fixed rootless sandbox, opaque credential profile, and exact prevalidated CONNECT attachment; execute once, inspect via RelayMe, replay once, then remove the profile attachment and runtime secret material.",
+    "id": "gemini-launcher-offline-compatibility-20260906",
+    "purpose": "Build and exercise only the fixed provider launcher in the exact rootless executor runtime before any provider request.",
+    "design": "Record host/image ABI metadata, build the fixed launcher in a matching image stage, and run one offline self-test under the established keep-id, Agent-identity, network-none sandbox with synthetic mounts and no real credential.",
     "backend": "existing RelayMe test host rootless Podman",
-    "state": "failed_pre_network",
-    "job_ref": "deployment-local provider acceptance",
-    "output_ref": "deployment-local sanitized provider acceptance evidence",
+    "state": "failed",
+    "job_ref": "deployment-local launcher compatibility correction",
+    "output_ref": "deployment-local sanitized ABI and offline self-test evidence",
     "submitted_at": "2026-09-06T00:00:00-07:00",
     "last_checked_at": "2026-09-06T00:00:00-07:00",
-    "result_summary": "The one retained task failed in 962 ms before any provider CONNECT because the host-built dynamically linked Go launcher could not start in the minimal executor image. Replay returned the original reviewable failed result; cleanup removed the entire temporary provider overlay."
+    "result_summary": "Host glibc and Alpine musl loader mismatch was reproduced with a safe ABI probe. A static ARM64 launcher passed the exact offline rootless self-test. The one authorized provider task then failed before container launch with invalid_base_revision because its temporary profile inherited an unrelated repository revision; replay retained the same failure and no proxy or provider request occurred."
   },
   "findings": [
     {
@@ -79,11 +79,23 @@
       ],
       "classification": "deployment-launcher-abi",
       "recorded_at": "2026-09-06T00:00:00-07:00"
+    },
+    {
+      "id": "gemini-static-launcher-offline-pass-profile-base-blocker",
+      "summary": "A static launcher eliminates the Alpine dynamic-loader incompatibility and passed the exact offline rootless self-test. The one provider-task attempt did not test provider connectivity because the deployment-local profile inherited an invalid base revision from a different repository.",
+      "evidence": [
+        "The safe ABI probe identified the host glibc interpreter as unavailable in Alpine, while the corrected launcher was verified static with no dynamic dependencies.",
+        "The offline keep-id/Agent-identity self-test succeeded with network none, a read-only root filesystem, and writable isolated worktree/output mounts.",
+        "The one RelayMe task returned invalid_base_revision before container creation; its exact idempotency replay returned the same execution ID, proxy audit contained no attachment or CONNECT, and source Git diff was empty.",
+        "The entire temporary provider overlay was removed after the attempt."
+      ],
+      "classification": "deployment-profile-registration",
+      "recorded_at": "2026-09-06T00:00:00-07:00"
     }
   ],
   "candidate_next_experiments": [
     {
-      "summary": "After separately authorizing a new one-shot attempt, build the fixed provider launcher statically or against the executor image runtime, then repeat the same exact-host test without changing RelayMe Core or broadening the egress policy.",
+      "summary": "After separately authorizing a new one-shot attempt, bind the temporary provider profile to its own source repository base revision, then repeat the same exact-host test using the already validated static launcher without changing RelayMe Core or broadening the egress policy.",
       "priority": "next"
     }
   ]

@@ -63,6 +63,39 @@ Next: only if separately authorized, build the same fixed launcher statically
 or against the executor image runtime, then repeat one exact-host attempt with
 the same sandbox and credential-isolation constraints.
 
+## 2026-09-06 — Launcher compatibility correction and one provider task
+
+The original failure was reproduced safely: a dynamically linked ARM64 Go
+binary built on the Ubuntu host requests the glibc loader, while the minimal
+Alpine executor image exposes only its musl loader. A fixed launcher was then
+built as a static ARM64 binary, verified to have no dynamic dependencies, and
+placed in a temporary image derived from the same executor runtime. Its
+offline self-test passed under the exact rootless `keep-id` and mapped Agent
+identity, with a read-only root filesystem, network none, and isolated
+worktree/output mounts.
+
+The one newly authorized provider task did not reach the corrected launcher.
+Its deployment-local profile inadvertently retained a base revision copied
+from the unrelated synthetic repository, so Agent rejected the task with
+`invalid_base_revision` before creating a worktree, container, proxy
+attachment, credential mount, or provider request. Replay returned the same
+retained execution without a second attempt; the isolated source Git diff was
+empty and the task was not reviewable because no executor result existed.
+
+The corrected launcher is therefore offline-compatible, but provider
+acceptance remains untested. All temporary image, profile, policy, credential
+copy, scoped client, source/worktree/output fixture, and proxy attachment were
+removed. A future attempt needs separate authorization and only a
+profile-local base-revision binding correction; it must not broaden RelayMe or
+the exact-host policy.
+
+Critic review: the offline result genuinely resolves the ABI question, but it
+does not support any conclusion about Gemini availability, authentication,
+free-tier use, CONNECT behavior, provider-only egress, or provider task
+semantics. The profile base-revision error is an independent deployment
+confounder. The conclusion is therefore limited to static-launcher runtime
+compatibility and must not be interpreted as provider acceptance.
+
 Critic review: the direct mapping probe and the real task test different
 layers. The probe establishes that the fixed derived UID/GID can write fresh
 `0700` worktree and output mounts under the exact keep-id mapping. The actual

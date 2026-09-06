@@ -1,6 +1,6 @@
 {
   "version": "0.4",
-  "status": "v04_provider_executor_acceptance_blocked_pre_network",
+  "status": "v04_provider_executor_acceptance_blocked_profile_base_revision",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -64,8 +64,9 @@
     "Completed a deployment-only rootless Podman mapping investigation with fresh no-network disposable probes: keep-id is active, but the fixed image UID/GID differs from the non-root Agent identity; Agent-owned mounts are visible as the Agent identity while the image process retains its fixed identity, explaining protected output-mount write denial; all forensic resources were removed and no RelayMe source or policy changed",
     "Added the sole Agent-local executor execution-identity mode, execution_identity=agent, valid only with keep-id; it derives the running non-root Agent UID/GID into one fixed Podman --user argument while clients and briefs cannot supply identities or Podman options",
     "Repeated isolated real-host non-provider executor acceptance with Agent-local identity alignment: protected worktree and output writes, fixed patch-and-test execution, artifact retention, no-network/forbidden-path checks, source preservation, cleanup, retained review retrieval, and exact idempotency replay all passed without provider credential or egress",
-    "Performed exactly one deployment-local Gemini provider-profile acceptance through start_registered_executor_task: the fixed launcher failed before network use because its host-built dynamically linked binary could not start in the minimal executor image; the retained failed result replayed and remained reviewable, source remained unchanged, and the temporary profile, scoped client, runtime credential copy, proxy policy/attachment, launcher, image, and disposable fixture were removed without a RelayMe Core change or provider request"
+    "Performed exactly one deployment-local Gemini provider-profile acceptance through start_registered_executor_task: the fixed launcher failed before network use because its host-built dynamically linked binary could not start in the minimal executor image; the retained failed result replayed and remained reviewable, source remained unchanged, and the temporary profile, scoped client, runtime credential copy, proxy policy/attachment, launcher, image, and disposable fixture were removed without a RelayMe Core change or provider request",
+    "Proved the ABI mismatch with a no-network probe, rebuilt the fixed deployment-local launcher as a static ARM64 binary, and passed an offline rootless keep-id/Agent-identity self-test with read-only root filesystem, network none, and synthetic mounts; the single newly authorized provider task then failed before container launch because its temporary profile retained an unrelated base revision, replayed without a second execution, created no proxy attachment or provider request, and all temporary deployment material was removed"
   ],
-  "current_work": "v0.4 executor-task bridge is locally and real-host accepted for the isolated non-provider profile; the single provider-enabled acceptance is blocked before provider connectivity by a deployment-local executable/image ABI mismatch",
-  "next_action": "Before any new provider attempt, rebuild the fixed deployment-local launcher as a static or image-compatible binary and re-establish a new one-shot, exact-host acceptance overlay"
+  "current_work": "v0.4 executor-task bridge is locally and real-host accepted for the isolated non-provider profile; launcher compatibility is proven offline, but provider acceptance is blocked because the one authorized task exposed a temporary-profile base-revision registration error before container launch",
+  "next_action": "Before any fresh provider authorization, correct the deployment-local profile to bind its own fixed source base revision, then repeat one exact-host acceptance without changing RelayMe Core or policy"
 }
