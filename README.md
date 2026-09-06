@@ -1,43 +1,42 @@
 <p align="center">
-  <img src="assets/relayme-mark.svg" width="72" alt="RelayMe Logo" />
+  <img src="assets/relayme-mark.svg" width="96" alt="RelayMe" />
 </p>
 
-# RelayMe
+<h1 align="center">RelayMe</h1>
 
-**Give ChatGPT and other AI agents safe, persistent hands on remote machines — without arbitrary shell access.**
+<p align="center">
+  <strong>Give AI agents hands on remote machines.</strong><br/>
+  Safe, persistent, bounded execution for ChatGPT and other agent clients.
+</p>
 
-AI agents need to act in the real world: inspect systems, run experiments, and execute bounded tasks. But giving remote models unrestricted shell or SSH access (`run_shell`) is dangerous, and ephemeral chat sessions make long-running work fragile.
+<p align="center">
+  <code>AI Agent</code> &rarr; <code>RelayMe</code> &rarr; <code>Remote Machine</code> &rarr; <code>Retained Artifacts</code> &rarr; <code>Review</code>
+</p>
 
-RelayMe is a secure, vendor-neutral execution bridge. It lets AI agents observe remote machines, run registered bounded tasks in isolated sandboxes, and retrieve structured artifacts for review — safely, durably, and across session boundaries.
+---
 
-```mermaid
-flowchart LR
-    Agent["AI Agent\n(ChatGPT / Claude / Codex)"]
-    Relay["RelayMe\n(Safe & Durable Bridge)"]
-    Remote["Remote Machine\n(Isolated Sandbox)"]
-    Artifacts["Review Artifacts\n(Logs / Patches / Results)"]
+### What is RelayMe?
+RelayMe is a vendor-neutral execution bridge that gives ChatGPT, Claude, Codex, and other AI agents the ability to safely interact with remote systems. It acts as the secure "hands" for web-based and conversational agents.
 
-    Agent -->|"HTTP / CLI / MCP"| Relay
-    Relay -->|"Outbound TLS"| Remote
-    Remote -->|"Bounded Tasks"| Artifacts
-    Artifacts -.->|"Later Review"| Agent
-```
+### Why do I need it?
+Browser and conversational agent sessions are ephemeral and isolated from your infrastructure. When an agent needs to diagnose an incident, inspect service health, or run a benchmark, it has no persistent, safe way to operate on remote servers.
+
+### Why not just give the agent SSH or shell access?
+Handing an LLM an open SSH key or an unconstrained `run_shell` tool invites accidental deletion, unauthorized changes, and security risks. RelayMe replaces arbitrary shell execution with **registered bounded tasks**, **rootless sandboxing**, **disposable Git worktrees**, and **retained review artifacts**.
+
+---
 
 ## What Can I Do with RelayMe?
 
-- **Inspect remote systems safely**: Let an agent query system status, processes, service logs, and git diffs without opening inbound ports or granting SSH access.
-- **Run bounded research & test tasks**: An AI research lead can inspect an experiment, launch a pre-registered benchmark or test run, disconnect, and retrieve logs later to plan the next step.
-- **Sandboxed code execution**: Run bounded containerized tasks (such as `patch-and-test`) in disposable Git worktrees where source repositories stay immutable.
+- **Inspect remote systems safely**: Query status, processes, service logs, and git diffs without opening inbound firewall ports or granting SSH access.
+- **Run bounded research & test tasks**: An AI research lead can inspect an experiment, launch a pre-registered benchmark or test run, disconnect, and retrieve logs later to decide the next step.
+- **Sandboxed code execution**: Run containerized `patch-and-test` tasks in disposable Git worktrees where source repositories stay immutable.
 - **Durable multi-session workflows**: Return hours later or hand off work between models—tasks persist in SQLite with atomic idempotency and replayable results.
-- **Vendor-neutral integration**: Works with ChatGPT, Claude, Codex, Antigravity, or custom agents via standard HTTP, CLI, and Model Context Protocol (MCP).
+- **Vendor-neutral client access**: Works with ChatGPT, Claude, Antigravity, or custom agents via standard HTTP, CLI, and Model Context Protocol (MCP).
 
-## How It Works
+---
 
-- **Controller (Broker)**: Authenticates clients, tracks task state in SQLite, and serves as the central rendezvous point.
-- **Host Agent (Executor)**: Runs on the target machine, long-polls the Controller over outbound TLS, and enforces local security policies.
-- **Client Interface**: Agents interact through standard REST APIs, the `relayme` CLI, or a 13-tool FastMCP stdio server.
-
-## Example: Bounded Patch & Review
+## Example: Bounded Task & Review
 
 An external agent or engineer dispatches a bounded task, disconnects, and inspects the retained artifacts later:
 
@@ -54,32 +53,30 @@ relayme task-artifact <TASK_ID> test.log
 
 The agent reviews the retrieved artifacts directly—without host filesystem access or repository mutations.
 
-## Why Not Just MCP or SSH?
+---
 
-- **MCP is a protocol, not an execution engine**: MCP tells an agent *how to call a tool*. RelayMe provides the authorization, isolation, state persistence, and artifact storage *behind* those tools.
-- **No arbitrary `run_shell`**: Instead of unconstrained `/bin/sh -c` access, RelayMe enforces locally registered task specifications, `--network none` rootless sandboxes, and immutable source trees.
-- **Outbound-only connections**: Target machines initiate outbound TLS polling to the Controller—no open inbound ports, no VPN holes, no SSH keys shared with models.
+## Why Not Just MCP?
+
+MCP tells an agent *how to call a tool*. RelayMe provides the **execution, isolation, state persistence, and artifact storage** *behind* those tools. RelayMe exposes a 13-tool FastMCP adapter on top of its durable execution engine.
+
+---
 
 ## Safety by Default
 
-- **Host Agent is the final authority**: Local policies cannot be overridden by clients or Controller tokens.
-- **Rootless container isolation**: Tasks run in rootless Podman with `--network none`, read-only roots, and Agent-derived non-root identities (`keep-id`).
+- **Host Agent is final authority**: Local policies cannot be overridden by clients or Controller tokens.
+- **Rootless container sandboxing**: Tasks run in rootless Podman with `--network none` and read-only roots.
 - **Disposable Git worktrees**: Host source trees are never modified directly.
-- **Bounded review artifacts**: Artifact retrieval is restricted to declared files with strict byte limits and directory traversal guards.
+- **Outbound-only connections**: Target machines initiate outbound TLS polling; no inbound ports are opened.
+- **Bounded review artifacts**: Artifact retrieval has strict byte limits and directory traversal guards.
+
+---
 
 ## Current Scope (v0.4.1)
 
-**Implemented in v0.4.1**:
-- Remote observation (R0): hosts, resources, status, processes, logs, files, git diffs.
-- Bounded registered task execution (R1) & containerized `patch-and-test` executor.
-- Durable SQLite task state, idempotency replay, and 13-tool FastMCP stdio adapter.
-- Verified end-to-end with external Antigravity/ChatGPT MCP clients on real Linux hosts.
+- **Supported**: Read-only observation (R0), bounded registered tasks (R1), containerized `patch-and-test` executor, durable SQLite state, idempotency replay, and 13-tool FastMCP adapter.
+- **Non-goals**: No arbitrary remote shell, no automatic upstream Git commit/push (R2), no GPU scheduler, no autonomous research workflow engine.
 
-**Explicit Non-Goals (v0.4.1)**:
-- No arbitrary remote shell execution or interactive terminal sessions.
-- No automatic upstream Git commit/push (R2 mutation) or deployment orchestration.
-- No GPU cluster scheduling or autonomous research workflow engine.
-- Provider credentials and container runtime profiles remain deployment-local.
+---
 
 ## Documentation
 
