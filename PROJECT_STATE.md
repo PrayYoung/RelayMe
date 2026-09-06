@@ -60,11 +60,12 @@ v0.4 registered executor-task bridge is locally validated with a synthetic, non-
 - Completed a deployment-only rootless Podman mapping investigation using fresh no-network disposable probes. `keep-id` is active, but the fixed image UID/GID differs from the non-root Agent identity: Agent-owned mounts become visible as the Agent identity while the image process retains its fixed identity. This explains the protected output-mount denial; all forensic containers, worktrees, and outputs were removed. No RelayMe policy or source changed.
 - Added the sole Agent-local executor execution-identity mode, `execution_identity: "agent"`, valid only with `user_namespace: "keep-id"`. It derives the running non-root Agent UID/GID and emits one fixed Podman `--user` argument; client/brief numeric identities and arbitrary Podman options remain impossible.
 - Repeated the isolated real-host non-provider executor acceptance: protected worktree and output writes passed, the fixed patch-and-test completed with all review artifacts, rootless no-network/forbidden-path checks passed, the source repository remained unchanged, cleanup completed, and the exact idempotency replay returned the retained reviewable result without a second execution. No provider credential or egress was used.
+- Performed exactly one deployment-local Gemini provider-profile acceptance attempt through `start_registered_executor_task`. The fixed container launcher failed before network use because its host-built dynamically linked binary could not start in the minimal executor image. The retained failed result replayed and remained reviewable; source remained unchanged. The temporary profile, scoped client, runtime credential copy, proxy policy/attachment, launcher, image, and disposable fixture were removed. No RelayMe Core defect was found and no provider request was sent.
 
 ## Current work
 
-- v0.4 executor-task bridge is locally and real-host accepted for the isolated non-provider profile, including fixed Agent-local identity alignment with rootless `keep-id`.
+- v0.4 executor-task bridge is locally and real-host accepted for the isolated non-provider profile. The single provider-enabled acceptance is blocked before provider connectivity by a deployment-local executable/image ABI mismatch.
 
 ## Next action
 
-- Conduct a separately authorized provider-enabled executor acceptance only after reviewing the deployment-local provider credential and egress policy.
+- Before any new provider attempt, rebuild the fixed deployment-local launcher as a static or image-compatible binary and re-establish a new one-shot, exact-host acceptance overlay.

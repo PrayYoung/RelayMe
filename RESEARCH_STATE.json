@@ -1,50 +1,49 @@
 {
   "project": {
     "name": "RelayMe",
-    "updated_at": "2026-09-02T00:00:00-07:00"
+    "updated_at": "2026-09-06T00:00:00-07:00"
   },
   "active_question": {
-    "id": "rootless-podman-agent-identity-20260902",
-    "title": "Validate a fixed Agent-local executor identity with keep-id",
-    "status": "answered",
-    "summary": "The fixed Agent-local execution identity paired with keep-id made both protected registered mounts writable while preserving rootless, non-root, no-network isolation."
+    "id": "gemini-provider-executor-acceptance-20260906",
+    "title": "Validate one provider-enabled bounded executor task",
+    "status": "concluded",
+    "summary": "One controlled attempt established that the deployment-local provider launcher did not start in the minimal executor image; provider connectivity was not exercised and no policy expansion occurred."
   },
   "current_hypothesis": {
-    "id": "agent-identity-with-keep-id",
-    "statement": "A fixed Agent-local execution identity paired with keep-id will make both registered worktree and protected output mounts writable while preserving non-root rootless isolation.",
+    "id": "gemini-exact-egress-acceptance",
+    "statement": "One fixed Gemini patch-and-test executor profile can complete through the existing exact-host CONNECT attachment while keeping direct egress blocked and credentials outside worktree, output, and audit surfaces.",
     "falsifiable": true,
     "frozen_at": "2026-09-02T00:00:00-07:00",
     "success_criteria": [
-      "The generated Podman argv contains only the derived Agent UID:GID when the registered profile selects the sole approved identity mode.",
-      "The isolated acceptance retains all four expected artifacts, reports a non-root container identity, and leaves no source/worktree/container residue."
+      "The fixed provider task reaches SUCCEEDED with a usable provider response and one disposable synthetic-file change.",
+      "The task retains the four bounded review artifacts, keeps source and direct egress isolated, and replays without re-execution."
     ],
     "failure_criteria": [
-      "Either registered bind mount remains unwritable under the derived Agent identity.",
-      "Validation requires privileged containers, rootful Podman, provider access, or unbounded Podman options."
+      "Gemini returns availability, authentication, quota, invalid-model, or new-endpoint failure; the single attempt then stops.",
+      "The task requests an unapproved hostname or requires policy expansion."
     ],
     "primary_metrics": [
-      "derived execution UID/GID",
-      "container-visible mount ownership and write outcomes",
-      "artifact retention and idempotent replay"
+      "provider HTTP/result classification",
+      "exact destination and direct-egress outcome",
+      "artifact retention, source preservation, and idempotent replay"
     ],
     "baseline_refs": [
-      "7ef87134c6f66c1ee0cfd4f78e5cefb867f139fc",
-      "74b8599a05cc729a281a707e965b77a13c91e356",
-      "real-host executor failure: disposable worktree permission denied"
+      "9cde1dfd1680492adbc54cc54c4fc829ea82ffef",
+      "prior Gemini deny-first probe: exact CONNECT destination only",
+      "real-host non-provider executor acceptance"
     ]
   },
   "active_experiment": {
-    "id": "agent-identity-acceptance-20260902",
-    "purpose": "Validate the fixed Agent-local identity policy in the existing isolated rootless executor acceptance fixture.",
-    "design": "Add one literal Agent-local identity mode accepted only with keep-id, prove fixed argv derivation locally, then repeat the one registered no-network patch-and-test acceptance with a fresh idempotency key.",
+    "id": "gemini-provider-executor-run-20260906",
+    "purpose": "Run exactly one fixed provider-enabled patch-and-test task through the existing RelayMe API.",
+    "design": "Register one local-only Gemini profile with the fixed rootless sandbox, opaque credential profile, and exact prevalidated CONNECT attachment; execute once, inspect via RelayMe, replay once, then remove the profile attachment and runtime secret material.",
     "backend": "existing RelayMe test host rootless Podman",
-    "state": "completed",
-    "job_ref": "deployment-local forensic probe",
-    "output_ref": "deployment-local sanitized acceptance evidence summary",
-    "submitted_at": "2026-09-02T00:00:00-07:00",
-    "last_checked_at": "2026-09-02T00:00:00-07:00",
-    "started_at": "2026-09-02T00:00:00-07:00",
-    "started_at": "2026-09-02T00:00:00-07:00"
+    "state": "failed_pre_network",
+    "job_ref": "deployment-local provider acceptance",
+    "output_ref": "deployment-local sanitized provider acceptance evidence",
+    "submitted_at": "2026-09-06T00:00:00-07:00",
+    "last_checked_at": "2026-09-06T00:00:00-07:00",
+    "result_summary": "The one retained task failed in 962 ms before any provider CONNECT because the host-built dynamically linked Go launcher could not start in the minimal executor image. Replay returned the original reviewable failed result; cleanup removed the entire temporary provider overlay."
   },
   "findings": [
     {
@@ -68,12 +67,24 @@
       ],
       "classification": "accepted-policy-correction",
       "recorded_at": "2026-09-02T00:00:00-07:00"
+    },
+    {
+      "id": "gemini-provider-launcher-abi-blocker",
+      "summary": "The first provider-enabled executor acceptance stopped before network use: the fixed Go launcher was dynamically linked for the host and the minimal executor image lacked its dynamic loader. This is a deployment launcher/image compatibility defect, not a RelayMe Core or egress-policy defect.",
+      "evidence": [
+        "The single RelayMe task retained exit code 255 and the bounded error that the fixed launcher could not be executed.",
+        "The exact idempotency replay returned the same execution ID and retained reviewable result with no changed files.",
+        "The proxy audit recorded only attachment preparation and release for the task, with no CONNECT event; direct network remained unavailable to the sandbox.",
+        "The temporary profile, credential copy, scoped client, proxy policy, launcher/image, source fixture, and worktree were removed after the attempt."
+      ],
+      "classification": "deployment-launcher-abi",
+      "recorded_at": "2026-09-06T00:00:00-07:00"
     }
   ],
   "candidate_next_experiments": [
     {
-      "summary": "The isolated non-provider executor acceptance passed with the fixed Agent-local identity. Provider-enabled testing remains a separate, not-yet-authorized step.",
-      "priority": "deferred"
+      "summary": "After separately authorizing a new one-shot attempt, build the fixed provider launcher statically or against the executor image runtime, then repeat the same exact-host test without changing RelayMe Core or broadening the egress policy.",
+      "priority": "next"
     }
   ]
 }

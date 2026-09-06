@@ -38,6 +38,31 @@ disposable worktree and container were removed, and replay returned the
 original result without another execution. No provider credential or egress
 was used.
 
+## 2026-09-06 — Single Gemini provider-profile acceptance
+
+Question: can the existing fixed rootless executor use one opaque Gemini
+credential through the already validated exact-host CONNECT attachment without
+weakening its network or filesystem isolation?
+
+Result: blocked before provider connectivity. The one permitted RelayMe task
+started its rootless container but the fixed provider launcher exited in 962 ms
+with a bounded executable-not-found error. The launcher had been built as a
+dynamically linked host binary, while the minimal executor image lacks its
+dynamic loader. This is a deployment-local launcher/image ABI mismatch, not a
+RelayMe Core, credential, provider, or egress-policy failure. No provider
+CONNECT occurred; the proxy audit contains only attachment prepare/release
+events for the task.
+
+The task result was retained, reviewable, and replayed with the original
+execution ID and no source change. The temporary profile, scoped client,
+runtime credential copy, exact-host proxy policy/attachment, launcher/image,
+and disposable source/worktree were removed. No retry or policy expansion was
+performed.
+
+Next: only if separately authorized, build the same fixed launcher statically
+or against the executor image runtime, then repeat one exact-host attempt with
+the same sandbox and credential-isolation constraints.
+
 Critic review: the direct mapping probe and the real task test different
 layers. The probe establishes that the fixed derived UID/GID can write fresh
 `0700` worktree and output mounts under the exact keep-id mapping. The actual

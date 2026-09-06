@@ -1,6 +1,6 @@
 {
   "version": "0.4",
-  "status": "v04_synthetic_executor_bridge_locally_validated",
+  "status": "v04_provider_executor_acceptance_blocked_pre_network",
   "completed": [
     "Reviewed v0.1 implementation brief",
     "Selected minimal Python stdlib + SQLite design",
@@ -63,8 +63,9 @@
     "Repeated non-provider real-host executor acceptance with the local keep-id profile: the task reached RUNNING but retained the same disposable-worktree write denial; RelayMe-only result/replay/review checks confirmed no second execution and no source-repository change, with no workaround, provider access, or post-boundary SSH repair",
     "Completed a deployment-only rootless Podman mapping investigation with fresh no-network disposable probes: keep-id is active, but the fixed image UID/GID differs from the non-root Agent identity; Agent-owned mounts are visible as the Agent identity while the image process retains its fixed identity, explaining protected output-mount write denial; all forensic resources were removed and no RelayMe source or policy changed",
     "Added the sole Agent-local executor execution-identity mode, execution_identity=agent, valid only with keep-id; it derives the running non-root Agent UID/GID into one fixed Podman --user argument while clients and briefs cannot supply identities or Podman options",
-    "Repeated isolated real-host non-provider executor acceptance with Agent-local identity alignment: protected worktree and output writes, fixed patch-and-test execution, artifact retention, no-network/forbidden-path checks, source preservation, cleanup, retained review retrieval, and exact idempotency replay all passed without provider credential or egress"
+    "Repeated isolated real-host non-provider executor acceptance with Agent-local identity alignment: protected worktree and output writes, fixed patch-and-test execution, artifact retention, no-network/forbidden-path checks, source preservation, cleanup, retained review retrieval, and exact idempotency replay all passed without provider credential or egress",
+    "Performed exactly one deployment-local Gemini provider-profile acceptance through start_registered_executor_task: the fixed launcher failed before network use because its host-built dynamically linked binary could not start in the minimal executor image; the retained failed result replayed and remained reviewable, source remained unchanged, and the temporary profile, scoped client, runtime credential copy, proxy policy/attachment, launcher, image, and disposable fixture were removed without a RelayMe Core change or provider request"
   ],
-  "current_work": "v0.4 executor-task bridge is locally and real-host accepted for the isolated non-provider profile, including fixed Agent-local identity alignment with rootless keep-id",
-  "next_action": "Conduct a separately authorized provider-enabled executor acceptance only after reviewing the deployment-local provider credential and egress policy"
+  "current_work": "v0.4 executor-task bridge is locally and real-host accepted for the isolated non-provider profile; the single provider-enabled acceptance is blocked before provider connectivity by a deployment-local executable/image ABI mismatch",
+  "next_action": "Before any new provider attempt, rebuild the fixed deployment-local launcher as a static or image-compatible binary and re-establish a new one-shot, exact-host acceptance overlay"
 }
