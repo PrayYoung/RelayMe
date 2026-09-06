@@ -26,6 +26,7 @@ flowchart TD
         I1["HTTP / REST API (:8765)"]
         I2["FastMCP Adapter (stdio)"]
         I3["FastMCP Remote (:8000)\nStreamable HTTP & SSE"]
+        I4["FastMCP OAuth 2.1 Edge (:8001)\nRFC 9728 / 8414 / 7591 / PKCE"]
     end
 
     subgraph ControllerPlane ["Controller Host"]
@@ -36,7 +37,7 @@ flowchart TD
         RA["RelayMe Host Agent\n(Outbound Long-Poll via TLS)"]
         LP["Local Policy Engine\n(Registered Tasks & File Roots)"]
         EX["Bounded Executor\n(patch-and-test Profile)"]
-        PM["Rootless Podman Sandbox\n(--network none, read-only rootfs)"]
+        PM["Rootless Podman / Disposable Sandbox\n(--network none, read-only rootfs)"]
         WT["Disposable Git Worktree\n(Isolated Scratch Copy)"]
     end
 
@@ -119,7 +120,9 @@ Incoming requests pass their client token via `Authorization: Bearer <token>`. S
 | `git_diff` | Reads `git diff` for a registered repository | Read-only inspection of working trees |
 | `run_registered_task` | Runs pre-registered fixed binary without args | Fixed argv, clean env, non-root user |
 | `start_registered_executor_task` | Starts containerized `patch-and-test` task | Disposable worktree, rootless Podman, `--network none` |
+| `run_executor_round` | Starts executor task and waits for review bundle | Coarse-grained single approval; bounded wait; owner-scoped |
+| `collect_executor_round` | Collects review bundle for running executor task | Owner-scoped; returns RUNNING if incomplete |
 | `get_task` | Returns task execution state & audit record | Owner-scoped |
 | `task_result` | Returns terminal execution result & metadata | Owner-scoped; bounded output retention |
 | `list_reviewable_tasks` | Lists completed executor tasks with evidence | Owner-scoped |
-| `get_task_artifact` | Retrieves text artifact (`patch.diff`, `test.log`, etc.) | Max 100,000 bytes; strict filename whitelist |
+| `get_task_artifact` | Retrieves text artifact (`patch.diff`, `test.log`, `executor_report.md`) | Max 100,000 bytes; strict filename whitelist |

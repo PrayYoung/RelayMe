@@ -34,6 +34,8 @@ TOOL_NAMES = (
     "task_result",
     "list_reviewable_tasks",
     "get_task_artifact",
+    "run_executor_round",
+    "collect_executor_round",
 )
 
 TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
@@ -49,7 +51,9 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "get_task": {"description": "Get owner-scoped state and bounded metadata for a RelayMe task ID.", "parameters": {"task_id": str}},
     "task_result": {"description": "Get the retained bounded result for an owner-scoped terminal task ID.", "parameters": {"task_id": str}},
     "list_reviewable_tasks": {"description": "List the caller's terminal executor tasks with retained reviewable evidence.", "parameters": {}},
-    "get_task_artifact": {"description": "Get a retained artifact (e.g. patch.diff, result.json, test.log, analysis.md) for an owner-scoped terminal executor task.", "parameters": {"task_id": str, "artifact_name": str}},
+    "get_task_artifact": {"description": "Get a retained artifact (e.g. patch.diff, result.json, test.log, analysis.md, executor_report.md) for an owner-scoped terminal executor task.", "parameters": {"task_id": str, "artifact_name": str}},
+    "run_executor_round": {"description": "Start a registered executor task, wait server-side for bounded completion, and return a comprehensive round review bundle including executor-native report, patch, and test evidence. If execution exceeds wait_seconds, returns state RUNNING with task_id to collect later.", "parameters": {"host": str, "executor_profile_id": str, "task_spec_id": str, "brief": str, "idempotency_key": (str, type(None)), "wait_seconds": (int, type(None))}},
+    "collect_executor_round": {"description": "Check a long-running executor task and return the structured round review bundle once terminal, or state RUNNING if still executing.", "parameters": {"task_id": str}},
 }
 
 
@@ -117,6 +121,122 @@ class ControllerClient:
             if time.monotonic() >= deadline: raise ControllerError(504, f"RelayMe task {task_id} did not finish within {self.config.wait_seconds} seconds")
             time.sleep(1)
 
+    def build_executor_round_bundle(self, task_id: str, status: str, task_data: dict[str, Any] | None = None) -> dict[str, Any]:
+        task_info = task_data["task"] if task_data and "task" in task_data else (task_data or {})
+        bundle: dict[str, Any] = {
+            "task_id": task_id,
+            "state": status,
+            "host_id": task_info.get("host_id"),
+            "executor_profile_id": task_info.get("executor_profile_id"),
+            "task_spec_id": task_info.get("task_spec_id"),
+            "created_at": task_info.get("created_at"),
+            "finished_at": task_info.get("finished_at"),
+        }
+        try:
+            res_wrapper = self.task_result(task_id)
+            res = res_wrapper.get("result", {})
+            if res:
+                bundle["summary"] = res.get("summary", "")
+                bundle["changed_files"] = res.get("changed_files", [])
+                bundle["tests_run"] = res.get("tests_run", [])
+                bundle["warnings"] = res.get("warnings", [])
+                bundle["duration_ms"] = res.get("duration_ms")
+                bundle["exit_code"] = res.get("exit_code")
+                bundle["artifacts"] = res.get("artifacts", [])
+        except Exception:
+            bundle["result_error"] = "unable to fetch task result"
+
+        def _extract_text(art_data: Any) -> str | None:
+            if not isinstance(art_data, dict):
+                return None
+            val = (
+                art_data.get("content")
+                or art_data.get("text")
+                or (art_data.get("artifact") if isinstance(art_data.get("artifact"), dict) else {}).get("text")
+                or (art_data.get("artifact") if isinstance(art_data.get("artifact"), dict) else {}).get("content")
+            )
+            return val if isinstance(val, str) else None
+
+        for report_name in ("executor_report.md", "analysis.md"):
+            try:
+                art = self.task_artifact(task_id, report_name)
+                text = _extract_text(art)
+                if text is not None:
+                    bundle["executor_report"] = text
+                    bundle["report_artifact_name"] = report_name
+                    break
+            except Exception:
+                continue
+
+        try:
+            patch_art = self.task_artifact(task_id, "patch.diff")
+            patch_text = _extract_text(patch_art)
+            if patch_text is not None:
+                bundle["patch"] = patch_text
+        except Exception:
+            pass
+
+        try:
+            test_art = self.task_artifact(task_id, "test.log")
+            test_text = _extract_text(test_art)
+            if test_text is not None:
+                bundle["test_log"] = test_text
+        except Exception:
+            pass
+
+        return bundle
+
+    def run_executor_round(
+        self,
+        host: str,
+        executor_profile_id: str,
+        task_spec_id: str,
+        brief: str,
+        idempotency_key: str | None = None,
+        wait_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        task_args = {
+            "executor_profile_id": executor_profile_id,
+            "task_spec_id": task_spec_id,
+            "brief": brief,
+        }
+        if idempotency_key is not None:
+            task_args["idempotency_key"] = idempotency_key
+
+        created = self.request("POST", "/v1/tasks", {
+            "host": host,
+            "capability": "start_registered_executor_task",
+            "arguments": task_args,
+        })
+        task_id = created["task_id"]
+
+        wait_cap = min(wait_seconds if wait_seconds is not None else self.config.wait_seconds, 120)
+        deadline = time.monotonic() + max(1, wait_cap)
+
+        while True:
+            value = self.request("GET", f"/v1/tasks/{task_id}")
+            status = value["task"]["status"]
+            if status in {"SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED"}:
+                return self.build_executor_round_bundle(task_id, status, value)
+            if time.monotonic() >= deadline:
+                return {
+                    "task_id": task_id,
+                    "state": "RUNNING",
+                    "message": f"Executor task {task_id} is running and has not finished within {wait_cap} seconds. Call collect_executor_round(task_id='{task_id}') to check and retrieve the final bundle when complete.",
+                }
+            time.sleep(1)
+
+    def collect_executor_round(self, task_id: str) -> dict[str, Any]:
+        value = self.request("GET", f"/v1/tasks/{task_id}")
+        status = value["task"]["status"]
+        if status in {"SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED"}:
+            return self.build_executor_round_bundle(task_id, status, value)
+        return {
+            "task_id": task_id,
+            "state": status,
+            "message": f"Executor task {task_id} is currently {status}.",
+        }
+
 
 class RelayMeMcpAdapter:
     def __init__(self, client: ControllerClient): self.client = client
@@ -143,6 +263,9 @@ class RelayMeMcpAdapter:
         if tool == "get_task_artifact":
             if set(arguments) != {"task_id", "artifact_name"}: raise ValueError("get_task_artifact accepts only task_id and artifact_name")
             return self._result(self.client.task_artifact(self._string(arguments, "task_id"), self._string(arguments, "artifact_name")))
+        if tool == "collect_executor_round":
+            if set(arguments) != {"task_id"}: raise ValueError("collect_executor_round accepts only task_id")
+            return self._result(self.client.collect_executor_round(self._string(arguments, "task_id")))
         host = self._string(arguments, "host")
         if tool == "list_host_resources": return self._result(self.client.list_host_resources(host))
         if tool == "run_registered_task":
@@ -155,6 +278,21 @@ class RelayMeMcpAdapter:
             task_args = {key: self._string(arguments, key) for key in ("executor_profile_id", "task_spec_id", "brief")}
             if arguments.get("idempotency_key") is not None: task_args["idempotency_key"] = self._string(arguments, "idempotency_key")
             return self._result(self.client.run_task(host, "start_registered_executor_task", task_args))
+        if tool == "run_executor_round":
+            allowed = {"host", "executor_profile_id", "task_spec_id", "brief", "idempotency_key", "wait_seconds"}
+            if set(arguments) - allowed: raise ValueError(f"run_executor_round accepts only {allowed}")
+            host = self._string(arguments, "host")
+            profile_id = self._string(arguments, "executor_profile_id")
+            spec_id = self._string(arguments, "task_spec_id")
+            brief = self._string(arguments, "brief")
+            idempotency_key = arguments.get("idempotency_key")
+            if idempotency_key is not None:
+                if not isinstance(idempotency_key, str) or not idempotency_key: raise ValueError("idempotency_key must be a non-empty string")
+            wait_seconds = arguments.get("wait_seconds")
+            if wait_seconds is not None:
+                if isinstance(wait_seconds, bool) or not isinstance(wait_seconds, int) or wait_seconds < 1:
+                    raise ValueError("wait_seconds must be a positive integer")
+            return self._result(self.client.run_executor_round(host, profile_id, spec_id, brief, idempotency_key, wait_seconds))
         mapping = {
             "host_status": ("host_status", {}),
             "process_list": ("process_list", {}),
@@ -237,6 +375,14 @@ def create_mcp_server(adapter: RelayMeMcpAdapter, server: Any | None = None):
 
     @server.tool(name="get_task_artifact", description=TOOL_SCHEMAS["get_task_artifact"]["description"])
     def get_task_artifact(task_id: str, artifact_name: str) -> dict[str, Any]: return invoke("get_task_artifact", {"task_id": task_id, "artifact_name": artifact_name})
+
+    @server.tool(name="run_executor_round", description=TOOL_SCHEMAS["run_executor_round"]["description"])
+    def run_executor_round(host: str, executor_profile_id: str, task_spec_id: str, brief: str, idempotency_key: str | None = None, wait_seconds: int | None = None) -> dict[str, Any]:
+        return invoke("run_executor_round", {"host": host, "executor_profile_id": executor_profile_id, "task_spec_id": task_spec_id, "brief": brief, "idempotency_key": idempotency_key, "wait_seconds": wait_seconds})
+
+    @server.tool(name="collect_executor_round", description=TOOL_SCHEMAS["collect_executor_round"]["description"])
+    def collect_executor_round(task_id: str) -> dict[str, Any]:
+        return invoke("collect_executor_round", {"task_id": task_id})
 
     return server
 

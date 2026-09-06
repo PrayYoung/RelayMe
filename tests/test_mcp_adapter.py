@@ -27,7 +27,7 @@ class McpAdapterTests(unittest.TestCase):
         self.adapter = server.RelayMeMcpAdapter(server.ControllerClient(config, self.double))
 
     def test_exposes_exactly_the_r0_and_bounded_r1_tools_without_a_server_prefix(self):
-        self.assertEqual(set(server.TOOL_NAMES), {"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff", "run_registered_task", "start_registered_executor_task", "get_task", "task_result", "list_reviewable_tasks", "get_task_artifact"})
+        self.assertEqual(set(server.TOOL_NAMES), {"list_hosts", "list_host_resources", "host_status", "process_list", "read_logs", "read_file", "git_diff", "run_registered_task", "start_registered_executor_task", "get_task", "task_result", "list_reviewable_tasks", "get_task_artifact", "run_executor_round", "collect_executor_round"})
         self.assertEqual(set(server.TOOL_SCHEMAS), set(server.TOOL_NAMES))
         self.assertNotIn("relayme_list_hosts", server.TOOL_NAMES)
 

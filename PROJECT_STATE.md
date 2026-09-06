@@ -73,12 +73,21 @@ v0.4 registered executor-task bridge is stable and validated on real hosts with 
   - Enforced conservative per-response byte cap (100,000 bytes) with `truncated: true` and full size/SHA-256 metadata preservation.
   - Added full regression coverage: 58 base unit tests and 8 MCP adapter tests (66 total tests) passing cleanly.
 - Completed external-client acceptance with Antigravity as MCP client on real-host executor task output: discovered artifact manifest via `task_result`, retrieved `patch.diff`, `test.log`, and `analysis.md` via `get_task_artifact`, and conducted independent review of patch scope and sandbox isolation entirely through RelayMe MCP without SSH or host filesystem access; source repository verified unmodified.
-- Consolidated, validated, and frozen the complete external-agent executor/review loop as release v0.4.1 (66 passing regression tests, clean wheel build, verified 13-tool FastMCP adapter, and complete scope boundary documentation).
+- Implemented RelayMe v0.5: Generic remote MCP server transport (`relayme-mcp-remote`) over Streamable HTTP and SSE with dynamic multi-tenant Bearer token pass-through, preserving RelayMe's client scoping, capability permissions, and owner isolation. Validated full tool parity across stdio and remote MCP.
+- Implemented RelayMe v0.6: Standards-compliant OAuth 2.1 authorization edge (`relayme-mcp-oauth`) supporting RFC 9728 Protected Resource Metadata, RFC 8414 Authorization Server Metadata, RFC 7591 Dynamic Client Registration, PKCE S256, and refresh token rotation. Passed end-to-end real Web-client acceptance with Gemini Spark.
+- Implemented RelayMe v0.7: Real coding executor integration and coarse-grained Web-friendly executor round:
+  - Whitelisted `executor_report.md` artifact in Controller and Host Agent policies.
+  - Implemented coarse-grained composite tools `run_executor_round` and `collect_executor_round`, reducing Web client UX from ~3 user approvals down to 1 single approval for bounded rounds (and 2 for long-running rounds).
+  - Built vendor-neutral executor launcher (`adapters/executors/launcher.py`) supporting Codex CLI and OpenCode within disposable worktrees.
+  - Added real coding acceptance fixture (`fixtures/real_coding_repo/`) with intentional bug in `triangular_number` and pytest unit test.
+  - Validated full autonomous edit/test/debug loop: Codex diagnosed failure in disposable worktree, fixed the bug, ran tests to 100% pass, generated native `executor_report.md` and `patch.diff`, cleaned up worktrees, and kept source repository 100% pristine.
+  - Verified idempotency replay and owner scoping.
+  - 132 automated tests passing cleanly across the test suite (`pytest tests/`).
 
 ## Current work
 
-- RelayMe v0.4.1 is consolidated, validated, documented, and frozen as a tagged release. The complete external-agent executor and review loop is operational and verified end-to-end via generic HTTP/CLI/MCP surfaces without SSH or host filesystem bypass. RelayMe Core remains vendor-neutral.
+- RelayMe v0.7 is complete, verified, and documented. Both local acceptance script and full regression test suite pass cleanly (132/132 tests). Composite MCP tools (`run_executor_round` and `collect_executor_round`) are operational across stdio, remote, and OAuth MCP transports.
 
 ## Next action
 
-- Next product step requires explicit authorization after v0.4.1 release. Candidate directions include provider-enabled executor acceptance or additional executor task specifications. Gemini provider experiment remains paused.
+- Next product step is open for review. Candidate directions include multi-round execution workflows, enhanced provider telemetry, or additional executor sandboxing runtimes.

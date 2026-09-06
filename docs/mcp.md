@@ -21,9 +21,9 @@ Neither adapter interacts directly with the Host Agent or owns execution state. 
 
 ---
 
-## 2. Shared Tool Surface (13 Tools)
+## 2. Shared Tool Surface (15 Tools)
 
-Both the stdio and remote adapters expose the exact same 13 tools with identical schemas, parameter validations, and descriptions:
+Both the stdio and remote adapters expose the exact same 15 tools with identical schemas, parameter validations, and descriptions:
 
 ### Observation & Discovery (R0)
 1. `list_hosts`: List enrolled RelayMe hosts visible to the calling token.
@@ -38,11 +38,48 @@ Both the stdio and remote adapters expose the exact same 13 tools with identical
 8. `run_registered_task`: Run a locally registered, idempotent fixed task without arguments.
 9. `start_registered_executor_task`: Start a containerized `patch-and-test` task in a disposable worktree (`--network none`, rootless Podman).
 
+### Composite Executor Round Actions (v0.7 Web-Friendly Flow)
+10. `run_executor_round`: Start a registered executor task, wait server-side for bounded completion, and return a structured round review bundle (status, native report, patch diff, test log, result summary). If execution exceeds wait duration, returns state `RUNNING` without error.
+11. `collect_executor_round`: Inspect a running executor task and retrieve the round review bundle upon completion, or return `RUNNING` if still executing.
+
 ### Task State & Evidence Retrieval
-10. `get_task`: Inspect owner-scoped task status, execution state, and bounded metadata.
-11. `task_result`: Fetch the retained result summary for a completed task.
-12. `list_reviewable_tasks`: List terminal executor tasks retaining reviewable artifacts.
-13. `get_task_artifact`: Retrieve bounded text artifacts (`patch.diff`, `result.json`, `test.log`, `analysis.md`).
+12. `get_task`: Inspect owner-scoped task status, execution state, and bounded metadata.
+13. `task_result`: Fetch the retained result summary for a completed task.
+14. `list_reviewable_tasks`: List terminal executor tasks retaining reviewable artifacts.
+15. `get_task_artifact`: Retrieve bounded text artifacts (`patch.diff`, `result.json`, `test.log`, `analysis.md`, `executor_report.md`).
+
+---
+
+## 3. Composite Executor Round Actions (v0.7)
+
+In Web MCP client workflows (such as Gemini Spark, Claude Web, or custom LLM interfaces), executing an executor task using primitive tools typically required **~3 separate user "Allow" confirmation dialogs** per round:
+1. `start_registered_executor_task` (launching the task)
+2. `get_task` / `task_result` (polling status)
+3. `get_task_artifact` (retrieving the patch, test log, and report)
+
+RelayMe v0.7 introduces two coarse-grained composite tools to condense this interaction loop into **1 single user confirmation** for bounded rounds (and 2 for long-running rounds):
+
+### `run_executor_round`
+- **Parameters**: `host` (str), `executor_profile_id` (str), `task_spec_id` (str), `brief` (str), `idempotency_key` (optional str), `wait_seconds` (optional int, default 35, max 120).
+- **Behavior**: Starts the registered executor task and waits server-side for bounded completion.
+  - If execution completes within `wait_seconds`, it packages and returns a **complete round review bundle**:
+    - `task_id`: Durable execution identifier.
+    - `state`: `SUCCEEDED` or `FAILED`.
+    - `executor_report`: Executor-native markdown report (`executor_report.md` or `analysis.md`).
+    - `patch`: Git patch diff applied to the worktree (`patch.diff`).
+    - `test_log`: Raw test execution log (`test.log`).
+    - `summary`, `changed_files`, `tests_run`, `duration_ms`: Structured execution metrics.
+    - `artifacts`: Retained artifact manifest.
+  - If execution exceeds `wait_seconds`, it returns cleanly with `state: "RUNNING"` without timing out or raising 504.
+
+### `collect_executor_round`
+- **Parameters**: `task_id` (str).
+- **Behavior**: Inspects an existing executor task. If still running, returns `state: "RUNNING"`. If terminal, returns the exact same structured review bundle as `run_executor_round`.
+
+### Invariants:
+- **No client arbitrary execution**: Remote clients cannot select executables, arguments, working directories, or credentials.
+- **Strict owner scoping**: Only the client token that initiated the task can collect its round review bundle.
+- **Disposable worktrees**: Execution runs in an isolated worktree; the source repository remains 100% clean and untouched.
 
 ---
 

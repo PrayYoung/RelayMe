@@ -149,7 +149,7 @@ class RemoteMcpUnitTests(unittest.TestCase):
         tool_names = {t.name for t in tools}
 
         self.assertEqual(tool_names, set(server.TOOL_NAMES))
-        self.assertEqual(len(tool_names), 13)
+        self.assertEqual(len(tool_names), len(server.TOOL_NAMES))
         for t in tools:
             expected_desc = server.TOOL_SCHEMAS[t.name]["description"]
             self.assertEqual(t.description, expected_desc)
@@ -243,7 +243,7 @@ class RemoteMcpIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await session.initialize()
 
                 tools = await session.list_tools()
-                self.assertEqual(len(tools.tools), 13)
+                self.assertEqual(len(tools.tools), len(server.TOOL_NAMES))
 
                 res = await session.call_tool("list_hosts", {})
                 self.assertFalse(res.isError)

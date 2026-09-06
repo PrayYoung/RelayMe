@@ -374,13 +374,13 @@ class AgentPolicy:
                 diff = subprocess.run(["git", "-C", str(worktree), "diff", "--no-ext-diff", "--no-color"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=30).stdout[:profile["max_artifact_bytes"]]
                 (task_output / "patch.diff").write_bytes(diff)
                 changed = subprocess.run(["git", "-C", str(worktree), "diff", "--name-only"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=30).stdout.decode("utf-8", "replace").splitlines()[:256]
-                artifact_limits = {"patch.diff": profile["max_artifact_bytes"], "result.json": min(profile["max_result_bytes"], profile["max_artifact_bytes"]), "test.log": profile["max_artifact_bytes"], "analysis.md": profile["max_artifact_bytes"]}
+                artifact_limits = {"patch.diff": profile["max_artifact_bytes"], "result.json": min(profile["max_result_bytes"], profile["max_artifact_bytes"]), "test.log": profile["max_artifact_bytes"], "analysis.md": profile["max_artifact_bytes"], "executor_report.md": profile["max_artifact_bytes"]}
                 for child in task_output.iterdir():
                     if child.name == "brief.txt": continue
                     if child.name not in artifact_limits or not child.is_file() or child.stat().st_size > artifact_limits[child.name]:
                         if child.is_dir(): shutil.rmtree(child, ignore_errors=True)
                         else: child.unlink(missing_ok=True)
-                artifacts = [item for item in (self._artifact(task_output / name, typ, profile["max_artifact_bytes"]) for name, typ in (("patch.diff", "patch"), ("result.json", "result"), ("test.log", "test-log"), ("analysis.md", "analysis"))) if item]
+                artifacts = [item for item in (self._artifact(task_output / name, typ, profile["max_artifact_bytes"]) for name, typ in (("patch.diff", "patch"), ("result.json", "result"), ("test.log", "test-log"), ("analysis.md", "analysis"), ("executor_report.md", "report"))) if item]
                 summary, warnings, tests = "executor completed", [], []
                 result_file = task_output / "result.json"
                 if result_file.is_file() and result_file.stat().st_size <= profile["max_result_bytes"]:

@@ -511,17 +511,20 @@ class ControllerTests(unittest.TestCase):
         (output_dir / "test.log").write_text(test_text)
         (output_dir / "result.json").write_text(result_text)
         (output_dir / "analysis.md").write_text(analysis_text)
+        (output_dir / "executor_report.md").write_text("# Native Report\nFixed bug.\n")
 
         patch_bytes = patch_text.encode()
         test_bytes = test_text.encode()
         result_bytes = result_text.encode()
         analysis_bytes = analysis_text.encode()
+        report_bytes = b"# Native Report\nFixed bug.\n"
 
         artifacts = [
             {"name": "patch.diff", "type": "patch", "size": len(patch_bytes), "sha256": hashlib.sha256(patch_bytes).hexdigest(), "mime_type": "text/plain"},
             {"name": "test.log", "type": "test-log", "size": len(test_bytes), "sha256": hashlib.sha256(test_bytes).hexdigest(), "mime_type": "text/plain"},
             {"name": "result.json", "type": "result", "size": len(result_bytes), "sha256": hashlib.sha256(result_bytes).hexdigest(), "mime_type": "application/json"},
             {"name": "analysis.md", "type": "analysis", "size": len(analysis_bytes), "sha256": hashlib.sha256(analysis_bytes).hexdigest(), "mime_type": "text/plain"},
+            {"name": "executor_report.md", "type": "report", "size": len(report_bytes), "sha256": hashlib.sha256(report_bytes).hexdigest(), "mime_type": "text/plain"},
         ]
 
         result = {
@@ -552,6 +555,9 @@ class ControllerTests(unittest.TestCase):
 
         analysis_res = self.call("GET", f"/v1/tasks/{task_id}/artifacts/analysis.md", token=token)
         self.assertEqual(analysis_res["content"], analysis_text)
+
+        report_res = self.call("GET", f"/v1/tasks/{task_id}/artifacts/executor_report.md", token=token)
+        self.assertEqual(report_res["content"], "# Native Report\nFixed bug.\n")
 
         # 2. Admin can read
         admin_res = self.call("GET", f"/v1/tasks/{task_id}/artifacts/patch.diff", token="admin")
