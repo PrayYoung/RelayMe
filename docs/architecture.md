@@ -10,6 +10,16 @@ RelayMe is an execution and observation bridge designed to connect AI agent inte
 - **SQLite + Filesystem**: The Controller persists task state, hashes client tokens, and tracks execution audit records in SQLite.
 - **Rootless Sandboxing**: Coding executor tasks run inside rootless Podman containers with disposable Git worktrees and `--network none`.
 
+## Canonical Separation of Roles
+
+RelayMe enforces a strict three-tier separation of responsibilities:
+
+| Role | Entity | Responsibilities |
+|---|---|---|
+| **Web Lead** | Remote Web LLM (Gemini Spark, Claude Web) | • Problem analysis & architectural reasoning<br/>• Formulating high-level task briefs<br/>• Reviewing returned evidence & deciding next steps |
+| **RelayMe Bridge** | Controller + Host Agent + MCP Edge | • Authentication & caller token scoping (OAuth 2.1 / Bearer)<br/>• Durable task dispatch & long-polling<br/>• Disposable worktree sandboxing & cleanup<br/>• Atomic idempotency & result persistence<br/>• Evidence transport (patch, logs, report)<br/>*Notice: RelayMe contains NO LLM reasoning loop.* |
+| **Coding Executor** | Local Coding Agent (Codex CLI, OpenCode) | • Inspecting repository & understanding failure<br/>• Applying code edits in disposable worktree<br/>• Running tests & debugging in local loop<br/>• Producing native final report (`executor_report.md`) |
+
 ---
 
 ## Detailed Component Diagram

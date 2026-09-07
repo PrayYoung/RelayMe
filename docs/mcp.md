@@ -50,40 +50,134 @@ Both the stdio and remote adapters expose the exact same 15 tools with identical
 
 ---
 
-## 3. Composite Executor Round Actions (v0.7)
+---
 
-In Web MCP client workflows (such as Gemini Spark, Claude Web, or custom LLM interfaces), executing an executor task using primitive tools typically required **~3 separate user "Allow" confirmation dialogs** per round:
+## 3. Preferred Web-Agent Interface: Coarse-Grained Rounds (v0.7)
+
+In Web MCP client environments (such as Gemini Spark, Claude Web, or custom LLM interfaces), executing an executor task using primitive tools typically required **~3 separate user "Allow" confirmation dialogs** per round:
 1. `start_registered_executor_task` (launching the task)
 2. `get_task` / `task_result` (polling status)
 3. `get_task_artifact` (retrieving the patch, test log, and report)
 
-RelayMe v0.7 introduces two coarse-grained composite tools to condense this interaction loop into **1 single user confirmation** for bounded rounds (and 2 for long-running rounds):
+RelayMe v0.7 introduces two coarse-grained composite tools as the **canonical interface for Web LLMs**, minimizing approval friction while preserving strict sandbox isolation and durable state tracking.
 
 ### `run_executor_round`
-- **Parameters**: `host` (str), `executor_profile_id` (str), `task_spec_id` (str), `brief` (str), `idempotency_key` (optional str), `wait_seconds` (optional int, default 35, max 120).
-- **Behavior**: Starts the registered executor task and waits server-side for bounded completion.
-  - If execution completes within `wait_seconds`, it packages and returns a **complete round review bundle**:
+- **Parameters**:
+  - `host` (str): Enrolled host identifier or hostname.
+  - `executor_profile_id` (str): Registered executor profile name.
+  - `task_spec_id` (str): Registered task specification (e.g. `patch-and-test`).
+  - `brief` (str): Free-form, high-level task instructions.
+  - `idempotency_key` (optional str): Caller-supplied deduplication key.
+  - `wait_seconds` (optional int): Synchronous wait duration (default 35s, maximum 120s).
+- **Behavior**: Starts the registered executor task and waits server-side for completion up to `wait_seconds`:
+  - **Terminal Completion**: If the task finishes within the wait window, it compiles and returns a complete **round review bundle**:
     - `task_id`: Durable execution identifier.
     - `state`: `SUCCEEDED` or `FAILED`.
-    - `executor_report`: Executor-native markdown report (`executor_report.md` or `analysis.md`).
-    - `patch`: Git patch diff applied to the worktree (`patch.diff`).
-    - `test_log`: Raw test execution log (`test.log`).
-    - `summary`, `changed_files`, `tests_run`, `duration_ms`: Structured execution metrics.
+    - `executor_report`: Full text of `executor_report.md` (or fallback `analysis.md`).
+    - `patch`: Unified git diff applied to the worktree (`patch.diff`).
+    - `test_log`: Test execution log from the runner (`test.log`).
+    - `summary`, `changed_files`, `tests_run`, `duration_ms`, `exit_code`: Structured execution telemetry.
     - `artifacts`: Retained artifact manifest.
-  - If execution exceeds `wait_seconds`, it returns cleanly with `state: "RUNNING"` without timing out or raising 504.
+  - **In-Flight Return**: If the task exceeds `wait_seconds`, it cleanly returns `{"task_id": "...", "state": "RUNNING", "message": "..."}` without raising an HTTP 504 Gateway Timeout error.
 
 ### `collect_executor_round`
 - **Parameters**: `task_id` (str).
-- **Behavior**: Inspects an existing executor task. If still running, returns `state: "RUNNING"`. If terminal, returns the exact same structured review bundle as `run_executor_round`.
+- **Behavior**: Inspects an active task:
+  - If still running, returns `{"task_id": task_id, "state": "RUNNING"}`.
+  - If terminal, compiles and returns the exact same structured review bundle as `run_executor_round`.
 
-### Invariants:
-- **No client arbitrary execution**: Remote clients cannot select executables, arguments, working directories, or credentials.
-- **Strict owner scoping**: Only the client token that initiated the task can collect its round review bundle.
-- **Disposable worktrees**: Execution runs in an isolated worktree; the source repository remains 100% clean and untouched.
+### Execution Patterns
+
+1. **Short Tasks (Completing within wait window)**:
+   ```text
+   Web Lead → run_executor_round → Final Review Bundle
+   ```
+   Requires only **1 single MCP call**.
+
+2. **Longer Tasks (Exceeding wait window)**:
+   ```text
+   Web Lead → run_executor_round → state: "RUNNING"
+   Web Lead → collect_executor_round → Final Review Bundle
+   ```
+   Requires only **2 MCP calls total**.
+
+### Web Client Approval Behavior
+
+Approval dialogs belong strictly to the Web client application (e.g. Google AI Studio, Claude Web) and may change independently of RelayMe. RelayMe does not weaken permissions or bypass confirmations to reduce prompts. In real end-to-end acceptance with Gemini Spark:
+- **v0.6 primitive flow**: approximately 3 separate human "Allow" clicks per round.
+- **v0.7 composite flow**: **2 human "Allow" clicks** because the real task exceeded the initial 35-second synchronous window and was cleanly retrieved via `collect_executor_round`.
+- A task completing within the initial wait window requires only **1 single Allow click**.
 
 ---
 
-## 3. Remote Server Configuration Reference
+## 4. Executor-Native Report (`executor_report.md`)
+
+RelayMe whitelists `executor_report.md` as a core retained artifact alongside `patch.diff`, `test.log`, and `result.json`.
+
+### Why It Exists
+RelayMe adheres to a strict architectural boundary: **RelayMe contains no LLM reasoning loop**. It does not invoke a secondary model to interpret or summarize the coding agent's actions.
+
+Instead, the Web lead receives:
+1. The **coding agent's own native final report** (`executor_report.md`), detailing its root-cause analysis and modifications.
+2. The **actual unified git diff** (`patch.diff`), demonstrating exactly what source lines were altered.
+3. The **actual test execution log** (`test.log`), proving whether test assertions passed or failed.
+4. Structured execution metadata (`result.json`), capturing exit code, duration, and files modified.
+
+This design enables the Web research lead to independently evaluate the coding agent's claims against real, un-hallucinated evidence.
+
+---
+
+## 5. Privacy & Disclosure Boundary
+
+When using RelayMe with cloud-based Web LLMs (Gemini Spark, Claude Web, ChatGPT), the MCP transport acts as a deliberate disclosure boundary:
+
+### What Is Disclosed
+Any artifact returned through MCP is transmitted to the connected model provider. For composite rounds, this includes:
+- Task brief and metadata (`task_id`, `state`, `duration_ms`)
+- Executor markdown report (`executor_report.md`)
+- Bounded patch diff (`patch.diff`, capped at configured byte limit)
+- Bounded test log (`test.log`, capped at configured byte limit)
+
+### What Is Strictly Guarded
+RelayMe guarantees that the following are **never returned or leaked** to MCP clients:
+- Entire source repositories or un-modified files
+- Files outside registered allowed roots
+- Environment variables or system configuration
+- RelayMe Controller bearer tokens
+- OAuth server secrets and client credentials
+- Host SSH keys or cloud provider credentials
+- Coding executor model API keys
+
+> [!WARNING]
+> **Deployment Ingress Notice**: Temporary Cloudflare quick tunnels (e.g. `*.trycloudflare.com`) used during acceptance testing provide ephemeral ingress without identity verification. For production deployments, use an authenticated Cloudflare Named Tunnel, Tailscale Funnel with access controls, or a trusted reverse proxy terminating your own TLS domain.
+
+---
+
+## 6. Sanitized Real Acceptance Record (v0.7.0)
+
+End-to-end acceptance was validated using a real non-interactive coding executor driven from Gemini Spark Web over OAuth 2.1:
+
+| Metric | Result | Notes |
+|---|---|---|
+| **Acceptance Client** | Gemini Spark Web | Connected over OAuth 2.1 / PKCE |
+| **Tool Surface** | 15 MCP Tools | Full parity across stdio, remote, and OAuth |
+| **Executor Engine** | Codex CLI | Real autonomous edit/test/debug loop |
+| **Acceptance Fixture** | `real-coding-repo` | Python fixture with intentional formula bug in `math_utils.py` |
+| **Initial State** | `pytest` FAILS | `test_triangular_small` fails (`assert 0 == 1`) |
+| **Diagnosis** | Root cause identified | Codex diagnosed `n * (n - 1) // 2` formula error |
+| **Code Modification** | Minimal patch | Corrected formula to `n * (n + 1) // 2` |
+| **Verification** | `pytest` PASSED | 3/3 tests passed in 0.01s; clean exit code 0 |
+| **Repository Safety** | Source 100% clean | Source repository unmodified (`git status` clean) |
+| **Workspace Cleanup** | 100% removed | Ephemeral worktree deleted immediately upon completion |
+| **Native Report** | `executor_report.md` | Retained and returned in review bundle |
+| **MCP Calls** | 2 calls total | `run_executor_round` (returned RUNNING at 35s) + `collect_executor_round` |
+| **Human Approvals** | 2 Allow clicks | Exactly 2 human UI confirmations in Gemini Spark Web |
+| **Primitive Calls** | 0 calls needed | Zero calls to `get_task`, `task_result`, or `get_task_artifact` |
+| **Credential Hygiene** | 0 secrets leaked | No bearer tokens, keys, or private paths exposed |
+
+---
+
+## 7. Remote Server Configuration Reference
 
 ### Command-Line Arguments (`relayme-mcp-remote`)
 
@@ -104,7 +198,7 @@ RelayMe v0.7 introduces two coarse-grained composite tools to condense this inte
 
 ---
 
-## 4. Authentication Architecture
+## 8. Authentication Architecture
 
 The remote MCP adapter supports two authentication operational modes:
 
@@ -128,7 +222,7 @@ relayme-mcp-remote --controller-url https://controller.example:8765 --token $(ca
 
 ---
 
-## 5. Security & Isolation Invariants
+## 9. Security & Isolation Invariants
 
 1. **Zero Credential Exposure in Tool Arguments**:
    MCP tools never accept authentication tokens or secret credentials as arguments. Tokens exist strictly in the HTTP transport layer.
@@ -141,7 +235,7 @@ relayme-mcp-remote --controller-url https://controller.example:8765 --token $(ca
 
 ---
 
-## 6. Production Deployment Patterns
+## 10. Production Deployment Patterns
 
 ### Pattern A: Reverse Proxy with Caddy (Automatic TLS)
 Run `relayme-mcp-remote` on localhost, letting Caddy terminate HTTPS and manage certificates:
@@ -178,7 +272,7 @@ relayme-mcp-remote \
 
 ---
 
-## 7. Web LLM Client Compatibility Investigation
+## 11. Web LLM Client Compatibility Investigation
 
 ### Claude Web Custom MCP (Anthropic)
 - **Transport Compatibility**:
@@ -210,7 +304,7 @@ relayme-mcp-remote \
 
 ---
 
-## 6. OAuth 2.1 Edge — Web MCP Client Authentication (v0.6)
+## 12. OAuth 2.1 Edge — Web MCP Client Authentication (v0.6)
 
 Web-based MCP clients such as **Gemini Spark** and **Claude Web** require standards-compliant OAuth 2.1 authentication. They cannot use raw Bearer tokens in connector configuration. `relayme-mcp-oauth` provides a self-contained OAuth 2.1 authorization server edge that sits in front of the MCP endpoint, mapping OAuth-authenticated identities to the existing RelayMe bearer token model.
 
@@ -226,7 +320,7 @@ relayme-mcp-oauth   (http://localhost:8001 or public HTTPS via tunnel)
   ├── /authorize  ← PKCE S256 authorization code endpoint
   ├── /token      ← opaque access token issuance + refresh rotation
   ├── /revoke     ← RFC 7009
-  └── /mcp        ← inline MCP (identical 13-tool schema)
+  └── /mcp        ← inline MCP (identical 15-tool schema)
         ↓ RelayMe bearer (resolved per-request from allowlist; never exposed to web client)
    existing RelayMe Controller
 ```

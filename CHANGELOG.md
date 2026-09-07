@@ -2,6 +2,31 @@
 
 All notable changes to RelayMe are documented in this file.
 
+## [0.7.0] - 2026-09-06
+
+### Added
+- Real non-interactive coding executor integration with vendor-neutral runner (`adapters/executors/launcher.py`) supporting Codex CLI within disposable worktrees.
+- Coarse-grained composite round actions: `run_executor_round` (start + server-side bounded wait + bundle assembly) and `collect_executor_round` (terminal bundle retrieval).
+- Whitelisted `executor_report.md` as a core retained artifact across Controller and Host Agent policies.
+- 15-tool FastMCP surface exposed consistently across stdio, remote HTTP/SSE, and OAuth 2.1 transports.
+- Verified real Web-client acceptance with Gemini Spark Web (2 composite MCP calls, 2 human-observed Allow clicks, zero primitive MCP calls needed, 100% clean repository preservation).
+
+## [0.6.0] - 2026-09-06
+
+### Added
+- Standards-compliant OAuth 2.1 authorization server edge (`relayme-mcp-oauth`) for remote MCP interoperability with web-based LLMs (Gemini Spark, Claude Web).
+- RFC 9728 Protected Resource Metadata and RFC 8414 Authorization Server Metadata discovery.
+- Dynamic Client Registration (RFC 7591), PKCE S256 code challenge verification, and refresh token rotation.
+- OAuth subject to scoped RelayMe bearer identity mapping with full capability enforcement.
+
+## [0.5.0] - 2026-09-06
+
+### Added
+- Generic remote MCP server transport (`relayme-mcp-remote`) over Streamable HTTP (`/mcp`) and SSE (`/sse` + `/messages/`).
+- Dynamic multi-tenant Bearer token pass-through middleware (`RemoteAuthMiddleware`) preserving Controller-side scoping and owner isolation.
+- Unauthenticated `/health` and `/ping` endpoints.
+- Tool schema and description parity with stdio MCP.
+
 ## [0.4.1] - 2026-09-06
 
 ### Added

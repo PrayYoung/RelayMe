@@ -196,14 +196,23 @@ def run_verification_tests(worktree: Path, output: Path) -> tuple[int, list[dict
     return proc.returncode, tests_run
 
 
+def _find_executable(name: str) -> str:
+    found = shutil.which(name)
+    if found:
+        return found
+    nvm_dir = os.environ.get("NVM_DIR")
+    nvm_base = Path(nvm_dir) if nvm_dir else Path.home() / ".nvm"
+    node_versions = nvm_base / "versions" / "node"
+    if node_versions.is_dir():
+        for candidate in sorted(node_versions.glob("*/bin/" + name), reverse=True):
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+    return ""
+
+
 def main() -> None:
     args = sys.argv[1:]
-    if not args:
-        print("RelayMe Coding Executor Launcher v0.7")
-        sys.exit(0)
-
-    # Handle cleanup invocation (podman rm -f <name>)
-    if args[0] == "rm":
+    if not args or args[0] == "rm":
         sys.exit(0)
 
     # Handle run invocation
@@ -214,8 +223,8 @@ def main() -> None:
     brief = brief_path.read_text(encoding="utf-8") if brief_path.is_file() else ""
 
     engine = os.environ.get("RELAYME_EXECUTOR_ENGINE", "").lower()
-    codex_bin = shutil.which("codex") or "/Users/peiyan1/.nvm/versions/node/v18.20.8/bin/codex"
-    opencode_bin = shutil.which("opencode") or "/Users/peiyan1/.nvm/versions/node/v18.20.8/bin/opencode"
+    codex_bin = _find_executable("codex")
+    opencode_bin = _find_executable("opencode")
 
     if not engine:
         if Path(codex_bin).is_file():
